@@ -256,10 +256,15 @@
                     </div>
                 </div>
 
-                <button id="create-lobby-btn" type="button" class="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm tracking-wider bg-slate-800 hover:bg-slate-700 border border-purple-500/50 text-purple-200 transition-all cursor-pointer active:scale-95 flex items-center justify-between">
-                    <span>CREATE NEW LOBBY</span>
-                    <span class="text-[10px] text-purple-300">PRIVATE CODE</span>
-                </button>
+                <div class="bg-slate-900/80 border border-purple-500/40 rounded-xl p-3 space-y-2">
+                    <div class="text-[10px] font-bold text-purple-300 tracking-wider">CREATE NEW LOBBY</div>
+                    <div class="flex gap-2">
+                        <input id="create-code-input" type="text" maxlength="16" placeholder="CHOOSE ROOM NAME..." class="flex-1 bg-slate-950 border border-slate-700 focus:border-purple-400 rounded-lg px-3 py-2 text-xs font-bold tracking-widest text-purple-200 uppercase outline-none" />
+                        <button id="create-lobby-btn" type="button" class="px-4 py-2 rounded-lg font-bold text-xs tracking-wider bg-purple-600 hover:bg-purple-500 text-white transition-all cursor-pointer active:scale-95">
+                            CREATE
+                        </button>
+                    </div>
+                </div>
 
                 <div id="lobby-error" class="hidden text-[11px] text-rose-400 font-bold text-center pt-1"></div>
 
@@ -475,8 +480,8 @@
             vGun: {
                 name: 'V-GUN', tier: 5, maxGems: 500, radius: 31, color: '#2dd4bf',
                 shield: 500, shieldRegen: 0.165, energy: 450, energyRegen: 1.2,
-                speed: 8.0, fireRate: 6, damage: 14, bulletSpeed: 16, energyCost: 18,
-                desc: 'Omnidirectional rapid-fire turret platform unleashing pulse bolts in every direction.',
+                speed: 8.2, fireRate: 9, damage: 21, bulletSpeed: 16.5, energyCost: 26,
+                desc: '8-way omnidirectional pulse emitter unleashing a ring of 8 bolts every 45 degrees.',
                 evolvesTo: ['scorpion', 'ultra']
             },
             dart: {
@@ -527,15 +532,15 @@
                 name: 'ADVANCED FIGHTER', tier: 6, maxGems: 720, radius: 34, color: '#c084fc',
                 shield: 680, shieldRegen: 0.22, energy: 560, energyRegen: 1.35,
                 speed: 8.4, fireRate: 9, damage: 28, bulletSpeed: 19.5, energyCost: 30,
-                desc: 'Elite strike craft firing two heavy central cannons flanked by four rapid wing lasers.',
+                desc: 'Elite strike craft firing two heavy central cannons flanked by four weaker side lasers.',
                 evolvesTo: ['odyssey', 'eviscerator']
             },
             scorpion: {
                 name: 'SCORPION', tier: 6, maxGems: 720, radius: 35, color: '#a855f7',
                 shield: 740, shieldRegen: 0.24, energy: 550, energyRegen: 1.3,
-                speed: 8.6, fireRate: 14, damage: 68, bulletSpeed: 24, energyCost: 42,
-                ramDamage: 55,
-                desc: 'Lethal ambush predator pairing a high-impact sniper railgun with reinforced ramming spikes.',
+                speed: 8.6, fireRate: 14, damage: 72, bulletSpeed: 24, energyCost: 42,
+                ramDamage: 65,
+                desc: 'Lethal ambush predator pairing a heavy sniper railgun with massive hull ram damage.',
                 evolvesTo: ['odyssey', 'eviscerator']
             },
             ultra: {
@@ -649,7 +654,6 @@
         let bullets = [];
         let beams = [];
         let particles = [];
-        let enemies = [];
 
         // --- TRYSTERO MULTIPLAYER STATE ---
         let mpRoom = null;
@@ -787,10 +791,12 @@
             const bAngle = peer.angle + (shot.angOffset || 0);
             const speed = spec.bulletSpeed + (shot.spdBonus || 0);
             const spawnDist = peer.radius + 8;
+            const perpAng = peer.angle + Math.PI / 2;
+            const lat = shot.latOffset || 0;
 
             bullets.push({
-                x: peer.x + Math.cos(bAngle) * spawnDist,
-                y: peer.y + Math.sin(bAngle) * spawnDist,
+                x: peer.x + Math.cos(bAngle) * spawnDist + Math.cos(perpAng) * lat,
+                y: peer.y + Math.sin(bAngle) * spawnDist + Math.sin(perpAng) * lat,
                 vx: Math.cos(bAngle) * speed + peer.vx * 0.25,
                 vy: Math.sin(bAngle) * speed + peer.vy * 0.25,
                 damage: (peer.damage || spec.damage) * (shot.dmgMult || 1),
@@ -802,27 +808,35 @@
                 splitStage: shot.splitStage || 0
             });
         }
+        async function ensureTrysteroLoaded() {
+            if (!trysteroJoinRoom) {
+                const mod = await import('https://esm.sh/trystero/torrent');
+                trysteroJoinRoom = mod.joinRoom;
+            }
+        }
 
-        function fireRemoteEvisceratorBeam(peer) {
-            const maxLen = 1150;
-            const startX = peer.x + Math.cos(peer.angle) * (peer.radius + 10);
-            const startY = peer.y + Math.sin(peer.angle) * (peer.radius + 10);
-            const endX = startX + Math.cos(peer.angle) * maxLen;
-            const endY = startY + Math.sin(peer.angle) * maxLen;
-
-            beams.push({
-                x1: startX, y1: startY,
-                x2: endX, y2: endY,
-                life: 16, maxLife: 16
-            });
-
-            if (player && player.invuln <= 0 && gameActive) {
-                const d = distToSegment(player.x, player.y, startX, startY, endX, endY);
-                if (d < player.radius + 16) {
-                    const spec = SHIPS[player.type] || SHIPS.fly;
-                    const beamDmg = (peer.damage || 45) * 49.5 * (spec.armorFactor || 1);
-                    damagePlayer(beamDmg, peer.x, peer.y);
-                }
+        async function checkRoomNameTaken(roomCode) {
+            try {
+                await ensureTrysteroLoaded();
+                const probeRoom = trysteroJoinRoom({ appId: 'starblast-gem-miner-v1' }, `lobby-${roomCode.toLowerCase()}`);
+                const isTaken = await new Promise((resolve) => {
+                    let settled = false;
+                    const done = (val) => {
+                        if (!settled) {
+                            settled = true;
+                            resolve(val);
+                        }
+                    };
+                    probeRoom.onPeerJoin(() => done(true));
+                    setTimeout(() => {
+                        const existing = typeof probeRoom.getPeers === 'function' ? Object.keys(probeRoom.getPeers()).length : 0;
+                        done(existing > 0);
+                    }, 950);
+                });
+                try { probeRoom.leave(); } catch (e) {}
+                return isTaken;
+            } catch (e) {
+                return false;
             }
         }
 
@@ -836,10 +850,7 @@
             updateLobbyHud();
 
             try {
-                if (!trysteroJoinRoom) {
-                    const mod = await import('https://esm.sh/trystero/torrent');
-                    trysteroJoinRoom = mod.joinRoom;
-                }
+                await ensureTrysteroLoaded();
                 const room = trysteroJoinRoom({ appId: 'starblast-gem-miner-v1' }, `lobby-${roomCode.toLowerCase()}`);
                 mpRoom = room;
 
@@ -962,11 +973,6 @@
                 spawnAsteroid();
             }
 
-            enemies = [];
-            for (let i = 0; i < 10; i++) {
-                spawnEnemy();
-            }
-
             gems = [];
             bullets = [];
             beams = [];
@@ -1007,35 +1013,6 @@
                 tier,
                 gemValue,
                 vertices
-            });
-        }
-
-        function spawnEnemy() {
-            const types = ['fly', 'delta', 'trident', 'pulse'];
-            const type = types[Math.floor(Math.random() * types.length)];
-            const spec = SHIPS[type];
-            let ex = Math.random() * (WORLD_SIZE - 400) + 200;
-            let ey = Math.random() * (WORLD_SIZE - 400) + 200;
-
-            if (player && Math.hypot(ex - player.x, ey - player.y) < 650) {
-                ex = (ex + 900) % WORLD_SIZE;
-            }
-
-            enemies.push({
-                x: ex,
-                y: ey,
-                vx: 0,
-                vy: 0,
-                angle: Math.random() * Math.PI * 2,
-                type,
-                radius: spec.radius,
-                shield: spec.shield * 0.85,
-                maxShield: spec.shield * 0.85,
-                speed: spec.speed * 0.72,
-                damage: spec.damage * 0.75,
-                fireRate: spec.fireRate + 8,
-                fireCooldown: Math.random() * 30,
-                gems: 12 + Math.floor(Math.random() * 15)
             });
         }
 
@@ -1095,10 +1072,11 @@
                 playSound('laser');
             }
 
-            const spawnBullet = (angOffset, spdBonus = 0, dmgMult = 1, r = 4, col = null, life = 55, splitStage = 0) => {
+            const spawnBullet = (angOffset, spdBonus = 0, dmgMult = 1, r = 4, col = null, life = 55, splitStage = 0, latOffset = 0) => {
                 const bAngle = shooter.angle + angOffset;
                 const speed = spec.bulletSpeed + spdBonus;
                 const spawnDist = shooter.radius + 8;
+                const perpAng = shooter.angle + Math.PI / 2;
 
                 if (!isEnemy && mpRoom) {
                     pendingFireBatch.push({
@@ -1108,13 +1086,14 @@
                         r,
                         col: col || spec.color,
                         life,
-                        splitStage
+                        splitStage,
+                        latOffset
                     });
                 }
 
                 bullets.push({
-                    x: shooter.x + Math.cos(bAngle) * spawnDist,
-                    y: shooter.y + Math.sin(bAngle) * spawnDist,
+                    x: shooter.x + Math.cos(bAngle) * spawnDist + Math.cos(perpAng) * latOffset,
+                    y: shooter.y + Math.sin(bAngle) * spawnDist + Math.sin(perpAng) * latOffset,
                     vx: Math.cos(bAngle) * speed + shooter.vx * 0.25,
                     vy: Math.sin(bAngle) * speed + shooter.vy * 0.25,
                     damage: shooter.damage * dmgMult,
@@ -1127,27 +1106,29 @@
             };
 
             switch (shooter.type) {
+                // TIER 1
                 case 'fly':
                     spawnBullet(0, 0, 1, 4);
                     break;
+                // TIER 2
                 case 'delta':
-                    spawnBullet(-0.08, 0, 0.75, 4);
-                    spawnBullet(0.08, 0, 0.75, 4);
+                    spawnBullet(0, 0, 0.75, 4, null, 55, 0, -7);
+                    spawnBullet(0, 0, 0.75, 4, null, 55, 0, 7);
                     break;
                 case 'trident':
                     spawnBullet(0, 1, 0.7, 4.5);
                     spawnBullet(-0.22, 0, 0.65, 4);
                     spawnBullet(0.22, 0, 0.65, 4);
                     break;
+                // TIER 3
                 case 'pulse':
-                    spawnBullet(-0.05, 1.5, 0.7, 3.8);
-                    spawnBullet(0.05, 1.5, 0.7, 3.8);
+                    spawnBullet(0, 1.5, 0.95, 4.4);
                     break;
                 case 'sideFighter':
-                    spawnBullet(-0.06, 0, 0.7, 4);
-                    spawnBullet(0.06, 0, 0.7, 4);
-                    spawnBullet(-0.75, -1, 0.55, 3.5);
-                    spawnBullet(0.75, -1, 0.55, 3.5);
+                    spawnBullet(0, 0, 0.7, 4, null, 55, 0, -7);
+                    spawnBullet(0, 0, 0.7, 4, null, 55, 0, 7);
+                    spawnBullet(-0.78, -1, 0.55, 3.5);
+                    spawnBullet(0.78, -1, 0.55, 3.5);
                     break;
                 case 'yDefender':
                     spawnBullet(-0.18, 0, 0.6, 4.5);
@@ -1155,14 +1136,15 @@
                     spawnBullet(0.06, 1, 0.65, 4.5);
                     spawnBullet(0.18, 0, 0.6, 4.5);
                     break;
+                // TIER 4
                 case 'vanguard':
                     spawnBullet(0, 4, 1.0, 6.5, '#e879f9');
                     spawnBullet(-0.12, 0, 0.35, 3.5);
                     spawnBullet(0.12, 0, 0.35, 3.5);
                     break;
                 case 'mercury':
-                    spawnBullet(-0.05, 1.5, 0.68, 4, '#38bdf8');
-                    spawnBullet(0.05, 1.5, 0.68, 4, '#38bdf8');
+                    spawnBullet(0, 1.5, 0.68, 4, '#38bdf8', 55, 0, -7);
+                    spawnBullet(0, 1.5, 0.68, 4, '#38bdf8', 55, 0, 7);
                     break;
                 case 'xWarrior':
                     spawnBullet(-0.18, 0, 0.62, 4.2, '#fb7185');
@@ -1171,10 +1153,10 @@
                     spawnBullet(0.18, 0, 0.62, 4.2, '#fb7185');
                     break;
                 case 'sideInterceptor':
-                    spawnBullet(-0.05, 1, 0.68, 4, '#f472b6');
-                    spawnBullet(0.05, 1, 0.68, 4, '#f472b6');
-                    spawnBullet(-0.62, -0.5, 0.52, 3.5, '#f472b6');
-                    spawnBullet(0.62, -0.5, 0.52, 3.5, '#f472b6');
+                    spawnBullet(0, 1, 0.68, 4, '#f472b6', 55, 0, -7);
+                    spawnBullet(0, 1, 0.68, 4, '#f472b6', 55, 0, 7);
+                    spawnBullet(-0.65, -0.5, 0.52, 3.5, '#f472b6');
+                    spawnBullet(0.65, -0.5, 0.52, 3.5, '#f472b6');
                     break;
                 case 'pioneer':
                     spawnBullet(-0.26, -0.5, 0.55, 4.2, '#34d399');
@@ -1188,13 +1170,14 @@
                     spawnBullet(-0.16, 0, 0.55, 4.2, '#fbbf24');
                     spawnBullet(0.16, 0, 0.55, 4.2, '#fbbf24');
                     break;
+                // TIER 5
                 case 'uSniper':
-                    spawnBullet(-0.07, 4.5, 0.95, 6.2, '#d8b4fe');
-                    spawnBullet(0.07, 4.5, 0.95, 6.2, '#d8b4fe');
+                    spawnBullet(0, 4.5, 0.95, 6.2, '#d8b4fe', 65, 0, -7);
+                    spawnBullet(0, 4.5, 0.95, 6.2, '#d8b4fe', 65, 0, 7);
                     break;
                 case 'vGun':
                     for (let i = 0; i < 8; i++) {
-                        spawnBullet((i * Math.PI) / 4, 0, 0.55, 3.8, '#2dd4bf');
+                        spawnBullet((i * Math.PI) / 4, 0, 0.72, 4.5, '#2dd4bf');
                     }
                     break;
                 case 'dart':
@@ -1210,13 +1193,13 @@
                     spawnBullet(0.2 + (Math.random() - 0.5) * 0.22, 0, 0.55, 3.8, '#fb7185');
                     break;
                 case 'shadowX2':
-                    spawnBullet(-0.05, 2, 0.85, 4.4, '#f472b6');
-                    spawnBullet(0.05, 2, 0.85, 4.4, '#f472b6');
+                    spawnBullet(0, 2, 0.85, 4.4, '#f472b6', 55, 0, -7);
+                    spawnBullet(0, 2, 0.85, 4.4, '#f472b6', 55, 0, 7);
                     break;
                 case 'omega':
-                    spawnBullet(-0.11, 1, 0.8, 5, '#34d399');
-                    spawnBullet(0, 1.5, 0.85, 5.2, '#6ee7b7');
-                    spawnBullet(0.11, 1, 0.8, 5, '#34d399');
+                    spawnBullet(0, 1, 0.8, 5, '#34d399', 55, 0, -11);
+                    spawnBullet(0, 1.5, 0.85, 5.2, '#6ee7b7', 55, 0, 0);
+                    spawnBullet(0, 1, 0.8, 5, '#34d399', 55, 0, 11);
                     break;
                 case 'yFighter':
                     spawnBullet(0, 1.5, 1.25, 7.5, '#fbbf24');
@@ -1228,18 +1211,17 @@
                     spawnBullet(-0.13, 0.5, 0.45, 4, '#a855f7');
                     spawnBullet(0.13, 0.5, 0.45, 4, '#a855f7');
                     break;
+                // TIER 6
                 case 'advFighter':
-                    spawnBullet(-0.05, 1.5, 0.95, 5.5, '#e879f9');
-                    spawnBullet(0.05, 1.5, 0.95, 5.5, '#e879f9');
-                    spawnBullet(-0.22, 0, 0.48, 3.6, '#c084fc');
-                    spawnBullet(-0.14, 0.5, 0.48, 3.6, '#c084fc');
-                    spawnBullet(0.14, 0.5, 0.48, 3.6, '#c084fc');
-                    spawnBullet(0.22, 0, 0.48, 3.6, '#c084fc');
+                    spawnBullet(0, 1.5, 1.0, 5.6, '#e879f9', 55, 0, -6);
+                    spawnBullet(0, 1.5, 1.0, 5.6, '#e879f9', 55, 0, 6);
+                    spawnBullet(-0.18, 0, 0.42, 3.5, '#c084fc', 50, 0, -14);
+                    spawnBullet(-0.1, 0.5, 0.42, 3.5, '#c084fc', 50, 0, -10);
+                    spawnBullet(0.1, 0.5, 0.42, 3.5, '#c084fc', 50, 0, 10);
+                    spawnBullet(0.18, 0, 0.42, 3.5, '#c084fc', 50, 0, 14);
                     break;
                 case 'scorpion':
-                    spawnBullet(0, 5, 1.25, 7.5, '#d8b4fe');
-                    spawnBullet(-0.15, 0, 0.4, 3.8, '#a855f7');
-                    spawnBullet(0.15, 0, 0.4, 3.8, '#a855f7');
+                    spawnBullet(0, 5, 1.35, 7.8, '#d8b4fe', 65);
                     break;
                 case 'ultra':
                     for (let i = 0; i < 20; i++) {
@@ -1248,7 +1230,7 @@
                     break;
                 case 'lightning':
                     for (let i = -2; i <= 2; i++) {
-                        spawnBullet(Math.PI + i * 0.06, 1.8, 0.72, 5.5, '#38bdf8');
+                        spawnBullet(Math.PI, 1.8, 0.72, 5.5, '#38bdf8', 50, 0, i * 6);
                     }
                     shooter.vx += Math.cos(shooter.angle) * 2.8;
                     shooter.vy += Math.sin(shooter.angle) * 2.8;
@@ -1257,49 +1239,48 @@
                     spawnBullet(0, 0, 1.35, 8.5, '#fb7185', 38, 1);
                     break;
                 case 'aSpeedster':
-                    spawnBullet(-0.04, 2.5, 0.9, 4.6, '#f472b6');
-                    spawnBullet(0.04, 2.5, 0.9, 4.6, '#f472b6');
+                    spawnBullet(0, 2.5, 0.9, 4.6, '#f472b6', 55, 0, -7);
+                    spawnBullet(0, 2.5, 0.9, 4.6, '#f472b6', 55, 0, 7);
                     break;
                 case 'barracuda':
-                    spawnBullet(-0.08, 1, 0.95, 5.8, '#34d399');
-                    spawnBullet(0.08, 1, 0.95, 5.8, '#34d399');
+                    spawnBullet(0, 1, 0.95, 5.8, '#34d399', 55, 0, -10);
+                    spawnBullet(0, 1, 0.95, 5.8, '#34d399', 55, 0, 10);
                     break;
                 case 'neptune':
-                    spawnBullet(0, 2, 1.25, 7.4, '#22d3ee');
-                    spawnBullet(-0.34, 0, 0.36, 3.5, '#67e8f9');
-                    spawnBullet(-0.24, 0.4, 0.36, 3.5, '#67e8f9');
-                    spawnBullet(-0.14, 0.8, 0.36, 3.5, '#67e8f9');
-                    spawnBullet(0.14, 0.8, 0.36, 3.5, '#67e8f9');
-                    spawnBullet(0.24, 0.4, 0.36, 3.5, '#67e8f9');
-                    spawnBullet(0.34, 0, 0.36, 3.5, '#67e8f9');
+                    spawnBullet(0, 2, 1.3, 7.5, '#22d3ee', 60, 0, 0);
+                    spawnBullet(0.15, 0.4, 0.34, 3.4, '#67e8f9', 50, 0, -24);
+                    spawnBullet(0.1, 0.6, 0.34, 3.4, '#67e8f9', 50, 0, -18);
+                    spawnBullet(0.05, 0.8, 0.34, 3.4, '#67e8f9', 50, 0, -12);
+                    spawnBullet(-0.05, 0.8, 0.34, 3.4, '#67e8f9', 50, 0, 12);
+                    spawnBullet(-0.1, 0.6, 0.34, 3.4, '#67e8f9', 50, 0, 18);
+                    spawnBullet(-0.15, 0.4, 0.34, 3.4, '#67e8f9', 50, 0, 24);
                     break;
                 case 'tanker':
                     spawnBullet(0, 0.5, 1.05, 6.8, '#fbbf24');
                     break;
                 case 'oDefender':
-                    spawnBullet(0, 4.8, 1.2, 7.4, '#818cf8');
-                    spawnBullet(-0.16, 0.5, 0.45, 4.2, '#a5b4fc');
-                    spawnBullet(0.16, 0.5, 0.45, 4.2, '#a5b4fc');
+                    spawnBullet(0, 4.8, 1.3, 7.6, '#818cf8', 65);
                     break;
+                // TIER 7
                 case 'odyssey':
-                    spawnBullet(-0.55, 0, 0.65, 4.2, '#38bdf8');
-                    spawnBullet(0.55, 0, 0.65, 4.2, '#38bdf8');
-                    spawnBullet(-1.15, -0.5, 0.6, 4.0, '#7dd3fc');
-                    spawnBullet(1.15, -0.5, 0.6, 4.0, '#7dd3fc');
+                    spawnBullet(-0.55, 0, 0.65, 4.2, '#38bdf8', 50, 0, -18);
+                    spawnBullet(0.55, 0, 0.65, 4.2, '#38bdf8', 50, 0, 18);
+                    spawnBullet(-1.15, -0.5, 0.6, 4.0, '#7dd3fc', 50, 0, -22);
+                    spawnBullet(1.15, -0.5, 0.6, 4.0, '#7dd3fc', 50, 0, 22);
                     break;
                 case 'destroyer':
                     for (let i = -3.5; i <= 3.5; i += 1) {
-                        spawnBullet(i * 0.025, 1.5, 0.85, 5.2, '#fb7185');
+                        spawnBullet(i * 0.02, 1.5, 0.85, 5.2, '#fb7185', 55, 0, i * 2.5);
                     }
                     for (let i = 0; i < 8; i++) {
                         const off = 0.14 + i * 0.022;
-                        spawnBullet(-off, 0.5, 0.34, 3.2, '#fda4af');
-                        spawnBullet(off, 0.5, 0.34, 3.2, '#fda4af');
+                        spawnBullet(-off, 0.5, 0.34, 3.2, '#fda4af', 50, 0, -12);
+                        spawnBullet(off, 0.5, 0.34, 3.2, '#fda4af', 50, 0, 12);
                     }
                     break;
                 case 'aries':
                     for (let i = -3; i <= 3; i++) {
-                        spawnBullet(Math.PI + i * 0.075, 1.8, 0.88, 6.2, '#fbbf24');
+                        spawnBullet(Math.PI + i * 0.06, 1.8, 0.88, 6.2, '#fbbf24', 52, 0, i * 4);
                     }
                     shooter.vx += Math.cos(shooter.angle) * 2.5;
                     shooter.vy += Math.sin(shooter.angle) * 2.5;
@@ -1351,21 +1332,25 @@
                     }
                 }
             }
+        }
 
-            for (let j = enemies.length - 1; j >= 0; j--) {
-                const en = enemies[j];
-                if (distToSegment(en.x, en.y, startX, startY, endX, endY) < en.radius + 16) {
-                    en.shield -= beamDamage;
-                    spawnExplosion(en.x, en.y, '#e0f2fe', 14);
-                    if (en.shield <= 0) {
-                        score += 250;
-                        spawnGems(en.x, en.y, en.gems);
-                        spawnExplosion(en.x, en.y, '#38bdf8', 24);
-                        playSound('explosion');
-                        enemies.splice(j, 1);
-                        spawnEnemy();
-                    }
-                }
+        function fireRemoteEvisceratorBeam(peer) {
+            const maxLen = 1150;
+            const startX = peer.x + Math.cos(peer.angle) * (peer.radius + 10);
+            const startY = peer.y + Math.sin(peer.angle) * (peer.radius + 10);
+            const endX = startX + Math.cos(peer.angle) * maxLen;
+            const endY = startY + Math.sin(peer.angle) * maxLen;
+            const beamDamage = (peer.damage || SHIPS.eviscerator.damage) * 49.5;
+
+            beams.push({
+                x1: startX, y1: startY,
+                x2: endX, y2: endY,
+                life: 16, maxLife: 16
+            });
+
+            if (player && gameActive && distToSegment(player.x, player.y, startX, startY, endX, endY) < player.radius + 16) {
+                const spec = SHIPS[player.type] || SHIPS.fly;
+                damagePlayer(beamDamage * (spec.armorFactor || 1), peer.x, peer.y);
             }
         }
 
@@ -1786,36 +1771,16 @@
                 }
 
                 if (!b.isEnemy) {
-                    // Hit AI enemies
-                    for (let j = enemies.length - 1; j >= 0; j--) {
-                        const en = enemies[j];
-                        if (Math.hypot(b.x - en.x, b.y - en.y) < b.radius + en.radius) {
-                            en.shield -= b.damage;
-                            spawnExplosion(b.x, b.y, b.color, 5);
-                            if (en.shield <= 0) {
-                                score += 200;
-                                spawnGems(en.x, en.y, en.gems);
-                                spawnExplosion(en.x, en.y, '#38bdf8', 20);
-                                playSound('explosion');
-                                enemies.splice(j, 1);
-                                spawnEnemy();
-                            }
+                    // Hit remote multiplayer ships visually
+                    for (const peer of Object.values(remotePeers)) {
+                        if (Math.hypot(b.x - peer.x, b.y - peer.y) < b.radius + peer.radius) {
+                            spawnExplosion(b.x, b.y, b.color, 6);
                             hit = true;
                             break;
                         }
                     }
-                    // Hit remote multiplayer ships visually
-                    if (!hit) {
-                        for (const peer of Object.values(remotePeers)) {
-                            if (Math.hypot(b.x - peer.x, b.y - peer.y) < b.radius + peer.radius) {
-                                spawnExplosion(b.x, b.y, b.color, 6);
-                                hit = true;
-                                break;
-                            }
-                        }
-                    }
                 } else {
-                    // Enemy / Remote bullet hitting local player
+                    // Remote peer bullet hitting local player
                     if (Math.hypot(b.x - player.x, b.y - player.y) < b.radius + player.radius) {
                         const incoming = b.damage * (spec.armorFactor || 1);
                         damagePlayer(incoming, b.x, b.y);
@@ -1856,49 +1821,6 @@
                     playSound('gem');
                     renderUpgradeButtons();
                     gems.splice(i, 1);
-                }
-            }
-
-            // Update AI Enemies
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const en = enemies[i];
-                const distToPlayer = Math.hypot(player.x - en.x, player.y - en.y);
-
-                if (distToPlayer < 750 && player.invuln <= 0) {
-                    en.angle = Math.atan2(player.y - en.y, player.x - en.x);
-                    if (distToPlayer > 220) {
-                        en.vx += Math.cos(en.angle) * 0.25;
-                        en.vy += Math.sin(en.angle) * 0.25;
-                    }
-                    if (en.fireCooldown <= 0) {
-                        fireWeapon(en, true);
-                        en.fireCooldown = en.fireRate;
-                    }
-                } else {
-                    en.angle += (Math.random() - 0.5) * 0.08;
-                    en.vx += Math.cos(en.angle) * 0.14;
-                    en.vy += Math.sin(en.angle) * 0.14;
-                }
-
-                if (en.fireCooldown > 0) en.fireCooldown--;
-                en.vx *= 0.92;
-                en.vy *= 0.92;
-                en.x = Math.max(en.radius, Math.min(WORLD_SIZE - en.radius, en.x + en.vx));
-                en.y = Math.max(en.radius, Math.min(WORLD_SIZE - en.radius, en.y + en.vy));
-
-                // Hull collision between Player and AI Enemy
-                if (distToPlayer < player.radius + en.radius) {
-                    const ramDmg = spec.ramDamage || 12;
-                    en.shield -= ramDmg;
-                    damagePlayer(10 * (spec.armorFactor || 1), en.x, en.y);
-                    if (en.shield <= 0) {
-                        score += 200;
-                        spawnGems(en.x, en.y, en.gems);
-                        spawnExplosion(en.x, en.y, '#38bdf8', 20);
-                        playSound('explosion');
-                        enemies.splice(i, 1);
-                        spawnEnemy();
-                    }
                 }
             }
 
@@ -2137,9 +2059,6 @@
                 ctx.restore();
             });
 
-            // AI Enemies
-            enemies.forEach(en => drawShipHull(en, false));
-
             // Remote Multiplayer Pilots
             Object.values(remotePeers).forEach(peer => {
                 drawShipHull(peer, false);
@@ -2177,14 +2096,6 @@
                 radarCtx.fillStyle = 'rgba(148, 163, 184, 0.45)';
                 asteroids.forEach(a => {
                     radarCtx.fillRect(a.x * scale - 1, a.y * scale - 1, 2, 2);
-                });
-
-                // AI enemies on radar
-                radarCtx.fillStyle = '#fb7185';
-                enemies.forEach(en => {
-                    radarCtx.beginPath();
-                    radarCtx.arc(en.x * scale, en.y * scale, 2.5, 0, Math.PI * 2);
-                    radarCtx.fill();
                 });
 
                 // Remote peers on radar
@@ -2295,26 +2206,38 @@
             }
         });
 
-        document.getElementById('create-lobby-btn').addEventListener('click', () => {
-            const newCode = generateLobbyCode();
-            startGameWithLobby(newCode);
+        document.getElementById('create-lobby-btn').addEventListener('click', async () => {
+            const input = document.getElementById('create-code-input');
+            const err = document.getElementById('lobby-error');
+            const btn = document.getElementById('create-lobby-btn');
+            const chosenName = (input.value || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+
+            if (!chosenName) {
+                err.textContent = 'PLEASE ENTER A ROOM NAME';
+                err.classList.remove('hidden');
+                return;
+            }
+
+            err.classList.add('hidden');
+            btn.disabled = true;
+            btn.textContent = '...';
+
+            const taken = await checkRoomNameTaken(chosenName);
+            btn.disabled = false;
+            btn.textContent = 'CREATE';
+
+            if (taken) {
+                err.textContent = `ROOM "${chosenName}" IS ALREADY TAKEN`;
+                err.classList.remove('hidden');
+                return;
+            }
+
+            startGameWithLobby(chosenName);
         });
 
-        // Info / Tech Tree Modal Controls
-        document.getElementById('info-btn').addEventListener('click', () => {
-            buildTechTreeUI();
-            document.getElementById('info-modal').classList.remove('hidden');
-        });
-        document.getElementById('close-info-btn').addEventListener('click', () => {
-            document.getElementById('info-modal').classList.add('hidden');
-        });
-
-        // Keyboard & Mouse Listeners
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            if (gameActive && e.key >= '1' && e.key <= '6') {
-                const cfg = UPGRADE_CONFIG[parseInt(e.key, 10) - 1];
-                if (cfg) purchaseUpgrade(cfg.id);
+        document.getElementById('create-code-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('create-lobby-btn').click();
             }
         });
         window.addEventListener('keyup', (e) => {
