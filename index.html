@@ -1,0 +1,2392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Starblast - Space Gem Miner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #030712;
+            font-family: 'Orbitron', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+        }
+
+        .upgrade-btn {
+            transition: all 0.15s ease;
+        }
+        .upgrade-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            background: rgba(56, 189, 248, 0.25);
+            border-color: #38bdf8;
+        }
+        .upgrade-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .evolve-btn {
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(59, 130, 246, 0.3));
+            border: 1px solid #a855f7;
+            animation: pulse-glow 2s infinite;
+        }
+        .evolve-btn:hover {
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.5), rgba(59, 130, 246, 0.5));
+            transform: scale(1.03);
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 12px rgba(168, 85, 247, 0.4); }
+            50% { box-shadow: 0 0 22px rgba(168, 85, 247, 0.8); }
+        }
+    </style>
+</head>
+<body class="text-slate-100 relative">
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD Top Bar -->
+    <div id="hud" class="hidden fixed top-4 left-4 right-4 flex justify-between items-start pointer-events-none z-10">
+        <!-- Ship Status & Bars -->
+        <div class="glass-panel rounded-xl p-3 sm:p-4 w-64 sm:w-80 pointer-events-auto">
+            <div class="flex justify-between items-center mb-1">
+                <span id="ship-name" class="font-bold text-cyan-400 text-sm sm:text-base tracking-wider">FLY [TIER 1]</span>
+                <span id="score-display" class="text-xs sm:text-sm text-slate-300">SCORE: 0</span>
+            </div>
+            <div class="flex justify-between items-center text-[10px] text-slate-400 mb-2 pb-1.5 border-b border-slate-800/80">
+                <span id="hud-room-code" class="text-cyan-300 font-bold tracking-wider">LOBBY: ---</span>
+                <span id="hud-peer-count" class="text-emerald-400 font-bold">PILOTS: 1</span>
+            </div>
+            
+            <!-- Shield Bar -->
+            <div class="mb-2">
+                <div class="flex justify-between text-[10px] text-cyan-300 mb-0.5">
+                    <span>SHIELD</span>
+                    <span id="shield-text">100 / 100</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div id="shield-bar" class="h-full bg-gradient-to-r from-cyan-500 to-blue-400 transition-all duration-150" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- Energy Bar -->
+            <div class="mb-2">
+                <div class="flex justify-between text-[10px] text-amber-300 mb-0.5">
+                    <span>ENERGY</span>
+                    <span id="energy-text">100 / 100</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div id="energy-bar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-300 transition-all duration-75" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- Gem Cargo Bar -->
+            <div>
+                <div class="flex justify-between text-[10px] text-rose-400 font-bold mb-0.5">
+                    <span>GEM CARGO</span>
+                    <span id="gem-text">0 / 20</span>
+                </div>
+                <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700 relative">
+                    <div id="gem-bar" class="h-full bg-gradient-to-r from-rose-600 via-pink-500 to-red-400 transition-all duration-150" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Right Controls & Radar -->
+        <div class="flex flex-col items-end gap-2 pointer-events-auto">
+            <button id="info-btn" class="glass-panel px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wider text-cyan-300 hover:text-white hover:border-cyan-400 transition-all cursor-pointer active:scale-95">
+                INFO
+            </button>
+            <!-- Radar / Minimap -->
+            <div class="glass-panel rounded-full p-1.5 hidden sm:block">
+                <canvas id="radarCanvas" width="130" height="130" class="rounded-full bg-slate-950/90"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ship Evolution Tech Tree Modal -->
+    <div id="info-modal" class="hidden fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+        <div class="glass-panel rounded-2xl p-4 sm:p-6 max-w-5xl w-full border-cyan-500/50 max-h-[92vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+                <div>
+                    <h2 class="text-lg sm:text-xl font-black text-cyan-400 tracking-wider">SHIP EVOLUTION TECH TREE</h2>
+                    <p class="text-[11px] text-slate-400">Select any starship to inspect its weapons, evolution links, and hull specifications</p>
+                </div>
+                <button id="close-info-btn" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-rose-600/80 text-slate-200 hover:text-white text-xs font-bold transition-colors cursor-pointer">
+                    CLOSE
+                </button>
+            </div>
+
+            <!-- Selected Ship Details Box -->
+            <div id="ship-details-card" class="bg-slate-900/90 border border-cyan-500/30 rounded-xl p-3 sm:p-4 mb-4">
+                <div class="flex flex-wrap justify-between items-center gap-2 mb-1.5">
+                    <div class="flex items-center gap-2">
+                        <span id="detail-name" class="text-base sm:text-lg font-bold text-cyan-300">FLY</span>
+                        <span id="detail-tier" class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/40 font-bold">TIER 1</span>
+                    </div>
+                    <div id="detail-evolves" class="text-[11px] text-purple-300">Evolves to: Delta-Fighter, Trident</div>
+                </div>
+                <p id="detail-desc" class="text-xs text-slate-300 mb-3">Balanced starter scout vessel armed with a single forward pulse laser.</p>
+                <div class="grid grid-cols-4 gap-2 text-center text-[10px] sm:text-xs">
+                    <div class="bg-slate-950/80 p-1.5 rounded-lg border border-slate-800">
+                        <div class="text-slate-400">SHIELD</div>
+                        <div id="detail-shield" class="font-bold text-cyan-400">100</div>
+                    </div>
+                    <div class="bg-slate-950/80 p-1.5 rounded-lg border border-slate-800">
+                        <div class="text-slate-400">ENERGY</div>
+                        <div id="detail-energy" class="font-bold text-amber-400">100</div>
+                    </div>
+                    <div class="bg-slate-950/80 p-1.5 rounded-lg border border-slate-800">
+                        <div class="text-slate-400">CAPACITY</div>
+                        <div id="detail-cap" class="font-bold text-rose-400">20 G</div>
+                    </div>
+                    <div class="bg-slate-950/80 p-1.5 rounded-lg border border-slate-800">
+                        <div class="text-slate-400">SPEED</div>
+                        <div id="detail-speed" class="font-bold text-emerald-400">6.5</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Horizontal Tiers Tree Container -->
+            <div id="tech-tree-scroll" class="overflow-x-auto overflow-y-auto relative pb-2">
+                <div id="tech-tree-canvas" class="relative inline-flex items-stretch gap-8 sm:gap-12 min-w-max p-2">
+                    <svg id="tech-tree-lines" class="absolute inset-0 pointer-events-none z-0"></svg>
+                    <div id="tech-tree-grid" class="relative z-10 flex items-stretch gap-8 sm:gap-12">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Evolution Modal Alert (Top Center) -->
+    <div id="evolution-panel" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-20 glass-panel rounded-xl p-3 sm:p-4 text-center border-purple-500 max-w-md w-[90%]">
+        <div class="text-xs text-purple-300 font-bold tracking-widest mb-2 animate-pulse">CARGO FULL! SHIP EVOLUTION AVAILABLE</div>
+        <div id="evolution-options" class="flex justify-center gap-2 sm:gap-3 flex-wrap">
+            <!-- Dynamic evolution buttons injected here -->
+        </div>
+    </div>
+
+    <!-- Ship Upgrades Panel (Bottom Left) -->
+    <div id="upgrades-panel" class="hidden fixed bottom-44 left-4 z-10 glass-panel rounded-xl p-2.5 sm:p-3 w-64 sm:w-72 pointer-events-auto">
+        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5 flex justify-between">
+            <span>Ship Upgrades (Keys 1-6)</span>
+            <span class="text-rose-400">Spend Gems</span>
+        </div>
+        <div id="upgrade-list" class="grid grid-cols-2 gap-1.5">
+            <!-- Dynamic upgrades injected here -->
+        </div>
+    </div>
+
+    <!-- Touch Controls (Mobile / Tablet) -->
+    <div id="touch-controls" class="hidden fixed bottom-6 left-6 right-6 flex justify-between items-end pointer-events-none z-20">
+        <!-- Virtual Joystick -->
+        <div id="joystick-zone" class="w-28 h-28 rounded-full glass-panel border-cyan-500/40 relative pointer-events-auto flex items-center justify-center">
+            <div id="joystick-knob" class="w-11 h-11 rounded-full bg-cyan-400/50 border border-cyan-300 shadow-lg transition-transform duration-75"></div>
+        </div>
+        <!-- Fire Button -->
+        <button id="touch-fire" class="w-20 h-20 rounded-full glass-panel border-rose-500/60 bg-rose-500/20 text-rose-300 font-bold text-xs tracking-wider pointer-events-auto active:bg-rose-500/50 flex items-center justify-center shadow-lg">
+            FIRE
+        </button>
+    </div>
+
+    <!-- Start / Game Over Menu Modal -->
+    <div id="menu-modal" class="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div class="glass-panel rounded-2xl p-6 sm:p-8 max-w-md w-full text-center border-cyan-500/50">
+            <h1 id="menu-title" class="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 mb-2">
+                STARBLAST
+            </h1>
+            <p id="menu-subtitle" class="text-xs sm:text-sm text-slate-300 mb-6">
+                Mine asteroids for red gems, upgrade your ship systems, and evolve across 7 tiers of starfighters.
+            </p>
+
+            <div id="final-stats" class="hidden bg-slate-900/80 rounded-xl p-3 mb-6 border border-slate-800">
+                <div class="text-xs text-slate-400">FINAL SCORE</div>
+                <div id="final-score" class="text-2xl font-bold text-cyan-400">0</div>
+            </div>
+
+            <!-- Step 1: Landing Page -->
+            <div id="landing-step">
+                <div class="text-left bg-slate-900/60 rounded-xl p-3.5 mb-6 text-xs text-slate-300 space-y-1.5 border border-slate-800/80">
+                    <div><span class="text-cyan-400 font-bold">MOVE:</span> WASD / Arrow Keys / Touch Joystick</div>
+                    <div><span class="text-cyan-400 font-bold">AIM & FIRE:</span> Mouse + Click / Spacebar</div>
+                    <div><span class="text-rose-400 font-bold">GEMS:</span> Act as both upgrade currency & reserve hull armor!</div>
+                </div>
+
+                <button id="play-menu-btn" type="button" class="w-full py-3.5 rounded-xl font-bold text-sm sm:text-base tracking-widest bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/30 transition-all cursor-pointer active:scale-95">
+                    PLAY
+                </button>
+            </div>
+
+            <!-- Step 2: Lobby Selection -->
+            <div id="lobby-step" class="hidden space-y-3 text-left">
+                <button id="random-lobby-btn" type="button" class="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/25 transition-all cursor-pointer active:scale-95 flex items-center justify-between">
+                    <span>LOAD RANDOM LOBBY</span>
+                    <span class="text-[10px] bg-slate-950/40 px-2 py-0.5 rounded">PUBLIC</span>
+                </button>
+
+                <div class="bg-slate-900/80 border border-slate-700/80 rounded-xl p-3 space-y-2">
+                    <div class="text-[10px] font-bold text-slate-400 tracking-wider">JOIN LOBBY WITH CODE</div>
+                    <div class="flex gap-2">
+                        <input id="lobby-code-input" type="text" maxlength="16" placeholder="ENTER CODE..." class="flex-1 bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-lg px-3 py-2 text-xs font-bold tracking-widest text-cyan-300 uppercase outline-none" />
+                        <button id="join-code-btn" type="button" class="px-4 py-2 rounded-lg font-bold text-xs tracking-wider bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer active:scale-95">
+                            JOIN
+                        </button>
+                    </div>
+                </div>
+
+                <button id="create-lobby-btn" type="button" class="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm tracking-wider bg-slate-800 hover:bg-slate-700 border border-purple-500/50 text-purple-200 transition-all cursor-pointer active:scale-95 flex items-center justify-between">
+                    <span>CREATE NEW LOBBY</span>
+                    <span class="text-[10px] text-purple-300">PRIVATE CODE</span>
+                </button>
+
+                <div id="lobby-error" class="hidden text-[11px] text-rose-400 font-bold text-center pt-1"></div>
+
+                <button id="back-to-landing-btn" type="button" class="w-full pt-1 text-center text-[11px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer">
+                    ← BACK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let trysteroJoinRoom = null;
+
+        // --- AUDIO SYNTHESIZER (No external URLs needed) ---
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'laser') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(680, now);
+                    osc.frequency.exponentialRampToValueAtTime(140, now + 0.09);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+                    osc.start(now);
+                    osc.stop(now + 0.09);
+                } else if (type === 'charge') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.exponentialRampToValueAtTime(1180, now + 0.8);
+                    gain.gain.setValueAtTime(0.05, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+                    osc.start(now);
+                    osc.stop(now + 0.8);
+                } else if (type === 'beam') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(1250, now);
+                    osc.frequency.exponentialRampToValueAtTime(95, now + 0.34);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+                    osc.start(now);
+                    osc.stop(now + 0.34);
+                } else if (type === 'gem') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, now);
+                    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'explosion') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(120, now);
+                    osc.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'upgrade') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.setValueAtTime(660, now + 0.06);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+                    osc.start(now);
+                    osc.stop(now + 0.16);
+                } else if (type === 'evolve') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(330, now);
+                    osc.frequency.setValueAtTime(440, now + 0.1);
+                    osc.frequency.setValueAtTime(660, now + 0.2);
+                    osc.frequency.setValueAtTime(880, now + 0.3);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                    osc.start(now);
+                    osc.stop(now + 0.45);
+                }
+            } catch (e) {}
+        }
+
+        // --- CANVAS & WORLD CONSTANTS ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const radarCanvas = document.getElementById('radarCanvas');
+        const radarCtx = radarCanvas.getContext('2d');
+
+        const WORLD_SIZE = 4200;
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- SHIP DEFINITIONS (7 Tiers) ---
+        const SHIPS = {
+            // TIER 1
+            fly: {
+                name: 'FLY', tier: 1, maxGems: 20, radius: 18, color: '#38bdf8',
+                shield: 100, shieldRegen: 0.045, energy: 100, energyRegen: 0.35,
+                speed: 6.5, fireRate: 13, damage: 12, bulletSpeed: 13, energyCost: 11,
+                desc: 'Balanced starter scout vessel armed with a single forward pulse laser.',
+                evolvesTo: ['delta', 'trident']
+            },
+            // TIER 2
+            delta: {
+                name: 'DELTA-FIGHTER', tier: 2, maxGems: 60, radius: 21, color: '#22d3ee',
+                shield: 165, shieldRegen: 0.065, energy: 145, energyRegen: 0.48,
+                speed: 7.4, fireRate: 10, damage: 13, bulletSpeed: 15, energyCost: 14,
+                desc: 'High-speed interceptor equipped with twin wing-mounted pulse cannons.',
+                evolvesTo: ['pulse', 'sideFighter']
+            },
+            trident: {
+                name: 'TRIDENT', tier: 2, maxGems: 60, radius: 23, color: '#818cf8',
+                shield: 195, shieldRegen: 0.075, energy: 160, energyRegen: 0.5,
+                speed: 6.3, fireRate: 14, damage: 11, bulletSpeed: 13.5, energyCost: 17,
+                desc: 'Three-pronged attack craft firing a wide triple spread for asteroid mining.',
+                evolvesTo: ['sideFighter', 'yDefender']
+            },
+            // TIER 3
+            pulse: {
+                name: 'PULSE-FIGHTER', tier: 3, maxGems: 140, radius: 24, color: '#34d399',
+                shield: 240, shieldRegen: 0.085, energy: 210, energyRegen: 0.68,
+                speed: 8.2, fireRate: 7, damage: 13, bulletSpeed: 17, energyCost: 13,
+                desc: 'Ultra-agile rapid-fire striker delivering relentless high-velocity bursts.',
+                evolvesTo: ['vanguard', 'mercury']
+            },
+            sideFighter: {
+                name: 'SIDE-FIGHTER', tier: 3, maxGems: 140, radius: 26, color: '#f472b6',
+                shield: 285, shieldRegen: 0.095, energy: 230, energyRegen: 0.65,
+                speed: 7.0, fireRate: 11, damage: 14, bulletSpeed: 15, energyCost: 19,
+                desc: 'Broad-winged gunship firing twin forward cannons plus defensive flank lasers.',
+                evolvesTo: ['xWarrior', 'sideInterceptor']
+            },
+            yDefender: {
+                name: 'Y-DEFENDER', tier: 3, maxGems: 140, radius: 28, color: '#fbbf24',
+                shield: 360, shieldRegen: 0.12, energy: 250, energyRegen: 0.62,
+                speed: 5.8, fireRate: 15, damage: 17, bulletSpeed: 13.5, energyCost: 23,
+                desc: 'Heavy armored bastion unleashing a dense 4-bolt forward plasma volley.',
+                evolvesTo: ['pioneer', 'crusader']
+            },
+            // TIER 4
+            vanguard: {
+                name: 'VANGUARD', tier: 4, maxGems: 320, radius: 29, color: '#a855f7',
+                shield: 380, shieldRegen: 0.13, energy: 310, energyRegen: 0.85,
+                speed: 7.9, fireRate: 15, damage: 46, bulletSpeed: 21, energyCost: 34,
+                desc: 'Precision long-range sniper firing heavy railgun slugs alongside twin nose lasers.',
+                evolvesTo: ['uSniper', 'vGun']
+            },
+            mercury: {
+                name: 'MERCURY', tier: 4, maxGems: 320, radius: 27, color: '#38bdf8',
+                shield: 340, shieldRegen: 0.125, energy: 330, energyRegen: 0.95,
+                speed: 8.8, fireRate: 6, damage: 15, bulletSpeed: 18, energyCost: 15,
+                desc: 'Blistering fast twin-stream interceptor engineered for hit-and-run raids.',
+                evolvesTo: ['vGun', 'dart']
+            },
+            xWarrior: {
+                name: 'X-WARRIOR', tier: 4, maxGems: 320, radius: 30, color: '#f43f5e',
+                shield: 420, shieldRegen: 0.145, energy: 340, energyRegen: 0.88,
+                speed: 7.4, fireRate: 9, damage: 17, bulletSpeed: 16.5, energyCost: 22,
+                desc: 'Quad-wing assault cruiser firing four synchronized forward plasma bolts.',
+                evolvesTo: ['dart', 'tWarrior']
+            },
+            sideInterceptor: {
+                name: 'SIDE-INTERCEPTOR', tier: 4, maxGems: 320, radius: 28, color: '#ec4899',
+                shield: 390, shieldRegen: 0.135, energy: 335, energyRegen: 0.9,
+                speed: 8.1, fireRate: 8, damage: 16, bulletSpeed: 17, energyCost: 20,
+                desc: 'Nimble swept-wing interceptor combining rapid twin nose guns with angled flank shots.',
+                evolvesTo: ['shadowX2', 'omega']
+            },
+            pioneer: {
+                name: 'PIONEER', tier: 4, maxGems: 320, radius: 32, color: '#10b981',
+                shield: 480, shieldRegen: 0.165, energy: 360, energyRegen: 0.85,
+                speed: 6.7, fireRate: 12, damage: 19, bulletSpeed: 15.5, energyCost: 26,
+                desc: 'Multi-cannon mining dreadnought capable of shattering dense asteroid fields.',
+                evolvesTo: ['omega', 'yFighter']
+            },
+            crusader: {
+                name: 'CRUSADER', tier: 4, maxGems: 320, radius: 34, color: '#f59e0b',
+                shield: 560, shieldRegen: 0.195, energy: 380, energyRegen: 0.82,
+                speed: 6.0, fireRate: 14, damage: 24, bulletSpeed: 14.5, energyCost: 30,
+                desc: 'Fortified siege juggernaut firing a massive heavy core cannon and twin wing lasers.',
+                evolvesTo: ['yFighter', 'batDefender']
+            },
+            // TIER 5
+            uSniper: {
+                name: 'U-SNIPER', tier: 5, maxGems: 500, radius: 31, color: '#c084fc',
+                shield: 510, shieldRegen: 0.165, energy: 420, energyRegen: 1.05,
+                speed: 8.1, fireRate: 16, damage: 56, bulletSpeed: 23, energyCost: 42,
+                desc: 'Dual-barrel railgun sniper firing twin high-velocity armor-piercing slugs.',
+                evolvesTo: ['advFighter', 'scorpion']
+            },
+            vGun: {
+                name: 'V-GUN', tier: 5, maxGems: 500, radius: 31, color: '#2dd4bf',
+                shield: 500, shieldRegen: 0.165, energy: 450, energyRegen: 1.2,
+                speed: 8.0, fireRate: 6, damage: 14, bulletSpeed: 16, energyCost: 18,
+                desc: 'Omnidirectional rapid-fire turret platform unleashing pulse bolts in every direction.',
+                evolvesTo: ['scorpion', 'ultra']
+            },
+            dart: {
+                name: 'DART', tier: 5, maxGems: 500, radius: 29, color: '#38bdf8',
+                shield: 490, shieldRegen: 0.16, energy: 430, energyRegen: 1.15,
+                speed: 9.8, fireRate: 9, damage: 22, bulletSpeed: 16, energyCost: 22,
+                ramDamage: 42,
+                desc: 'Hypersonic melee rammer that blasts three heavy shells backward to rocket forward.',
+                evolvesTo: ['ultra', 'lightning']
+            },
+            tWarrior: {
+                name: 'T-WARRIOR', tier: 5, maxGems: 500, radius: 33, color: '#fb7185',
+                shield: 550, shieldRegen: 0.18, energy: 460, energyRegen: 1.18,
+                speed: 7.5, fireRate: 4, damage: 13, bulletSpeed: 16.5, energyCost: 14,
+                desc: 'Heavy gatling gunship spewing three rapid, wide-spread minigun streams.',
+                evolvesTo: ['lightning', 'recursive']
+            },
+            shadowX2: {
+                name: 'SHADOW X2', tier: 5, maxGems: 500, radius: 30, color: '#f472b6',
+                shield: 520, shieldRegen: 0.175, energy: 440, energyRegen: 1.15,
+                speed: 8.9, fireRate: 6, damage: 20, bulletSpeed: 19, energyCost: 19,
+                desc: 'Upgraded stealth interceptor boasting high top speed and rapid twin precision cannons.',
+                evolvesTo: ['aSpeedster', 'barracuda']
+            },
+            omega: {
+                name: 'OMEGA', tier: 5, maxGems: 500, radius: 34, color: '#34d399',
+                shield: 610, shieldRegen: 0.2, energy: 470, energyRegen: 1.1,
+                speed: 7.3, fireRate: 10, damage: 24, bulletSpeed: 17.5, energyCost: 27,
+                desc: 'Tri-lane heavy assault cruiser firing three parallel forward plasma beams.',
+                evolvesTo: ['barracuda', 'neptune']
+            },
+            yFighter: {
+                name: 'Y-FIGHTER', tier: 5, maxGems: 500, radius: 36, color: '#fbbf24',
+                shield: 710, shieldRegen: 0.23, energy: 490, energyRegen: 1.05,
+                speed: 6.6, fireRate: 12, damage: 29, bulletSpeed: 16, energyCost: 32,
+                desc: 'Reinforced heavy siege fighter outclassing the Crusader in armor and firepower.',
+                evolvesTo: ['neptune', 'tanker']
+            },
+            batDefender: {
+                name: 'BAT-DEFENDER', tier: 5, maxGems: 500, radius: 35, color: '#a855f7',
+                shield: 680, shieldRegen: 0.22, energy: 480, energyRegen: 1.08,
+                speed: 7.6, fireRate: 13, damage: 52, bulletSpeed: 21.5, energyCost: 36,
+                desc: 'Armored swept-wing heavy sniper combining Vanguard railguns with fortress shielding.',
+                evolvesTo: ['tanker', 'oDefender']
+            },
+            // TIER 6
+            advFighter: {
+                name: 'ADVANCED FIGHTER', tier: 6, maxGems: 720, radius: 34, color: '#c084fc',
+                shield: 680, shieldRegen: 0.22, energy: 560, energyRegen: 1.35,
+                speed: 8.4, fireRate: 9, damage: 28, bulletSpeed: 19.5, energyCost: 30,
+                desc: 'Elite strike craft firing two heavy central cannons flanked by four rapid wing lasers.',
+                evolvesTo: ['odyssey', 'eviscerator']
+            },
+            scorpion: {
+                name: 'SCORPION', tier: 6, maxGems: 720, radius: 35, color: '#a855f7',
+                shield: 740, shieldRegen: 0.24, energy: 550, energyRegen: 1.3,
+                speed: 8.6, fireRate: 14, damage: 68, bulletSpeed: 24, energyCost: 42,
+                ramDamage: 55,
+                desc: 'Lethal ambush predator pairing a high-impact sniper railgun with reinforced ramming spikes.',
+                evolvesTo: ['odyssey', 'eviscerator']
+            },
+            ultra: {
+                name: 'ULTRA', tier: 6, maxGems: 720, radius: 36, color: '#2dd4bf',
+                shield: 720, shieldRegen: 0.23, energy: 620, energyRegen: 1.55,
+                speed: 8.1, fireRate: 11, damage: 18, bulletSpeed: 16.5, energyCost: 38,
+                desc: '360-degree nova warship firing 20 synchronized lasers at 18-degree intervals.',
+                evolvesTo: ['odyssey', 'eviscerator']
+            },
+            lightning: {
+                name: 'LIGHTNING', tier: 6, maxGems: 720, radius: 32, color: '#38bdf8',
+                shield: 690, shieldRegen: 0.225, energy: 580, energyRegen: 1.45,
+                speed: 11.2, fireRate: 8, damage: 24, bulletSpeed: 17, energyCost: 26,
+                ramDamage: 68,
+                desc: 'Supersonic battering ram firing five parallel rear thrusters to obliterate targets on impact.',
+                evolvesTo: ['odyssey', 'eviscerator']
+            },
+            recursive: {
+                name: 'RECURSIVE', tier: 6, maxGems: 720, radius: 37, color: '#fb7185',
+                shield: 760, shieldRegen: 0.24, energy: 600, energyRegen: 1.35,
+                speed: 7.4, fireRate: 28, damage: 34, bulletSpeed: 12.5, energyCost: 48,
+                desc: 'Fires a slow fractal warhead that splits into 8 sub-munitions, each splitting into 4 bolts.',
+                evolvesTo: ['odyssey', 'eviscerator']
+            },
+            aSpeedster: {
+                name: 'A-SPEEDSTER', tier: 6, maxGems: 720, radius: 32, color: '#f472b6',
+                shield: 670, shieldRegen: 0.225, energy: 590, energyRegen: 1.5,
+                speed: 9.9, fireRate: 5, damage: 24, bulletSpeed: 21, energyCost: 20,
+                desc: 'Apex interceptor achieving unmatched agility and blistering twin-cannon fire rates.',
+                evolvesTo: ['destroyer', 'aries']
+            },
+            barracuda: {
+                name: 'BARRACUDA', tier: 6, maxGems: 720, radius: 39, color: '#34d399',
+                shield: 1120, shieldRegen: 0.34, energy: 560, energyRegen: 1.25,
+                speed: 7.1, fireRate: 10, damage: 28, bulletSpeed: 18, energyCost: 28,
+                desc: 'Heavily shielded assault frigate armed with dual forward heavy plasma cannons.',
+                evolvesTo: ['destroyer', 'aries']
+            },
+            neptune: {
+                name: 'NEPTUNE', tier: 6, maxGems: 720, radius: 38, color: '#22d3ee',
+                shield: 840, shieldRegen: 0.265, energy: 610, energyRegen: 1.4,
+                speed: 7.3, fireRate: 11, damage: 42, bulletSpeed: 18.5, energyCost: 34,
+                desc: 'Trident dreadnought firing a heavy central lance flanked by six converging side bolts.',
+                evolvesTo: ['destroyer', 'aries']
+            },
+            tanker: {
+                name: 'TANKER', tier: 6, maxGems: 720, radius: 42, color: '#fbbf24',
+                shield: 1450, shieldRegen: 0.42, energy: 540, energyRegen: 1.2,
+                speed: 6.2, fireRate: 14, damage: 32, bulletSpeed: 16.5, energyCost: 26,
+                desc: 'Colossal armored bulwark sacrificing multi-gun firepower for extreme shield capacity.',
+                evolvesTo: ['destroyer', 'aries']
+            },
+            oDefender: {
+                name: 'O-DEFENDER', tier: 6, maxGems: 720, radius: 38, color: '#818cf8',
+                shield: 960, shieldRegen: 0.295, energy: 580, energyRegen: 1.32,
+                speed: 7.9, fireRate: 14, damage: 64, bulletSpeed: 23, energyCost: 40,
+                ramDamage: 60,
+                desc: 'Orbital ram-sniper fortress blending heavy railgun precision with devastating hull collisions.',
+                evolvesTo: ['destroyer', 'aries']
+            },
+            // TIER 7
+            odyssey: {
+                name: 'ODYSSEY', tier: 7, maxGems: 1000, radius: 52, color: '#38bdf8',
+                shield: 3600, shieldRegen: 0.72, energy: 850, energyRegen: 1.8,
+                speed: 5.8, fireRate: 11, damage: 26, bulletSpeed: 17, energyCost: 24,
+                ramDamage: 110, armorFactor: 0.35,
+                desc: 'Colossal dreadnought tank with impenetrable shields, heavy armor plating, side guns, and crushing ram force.',
+                evolvesTo: []
+            },
+            eviscerator: {
+                name: 'EVISCERATOR', tier: 7, maxGems: 1000, radius: 35, color: '#e0f2fe',
+                shield: 920, shieldRegen: 0.285, energy: 800, energyRegen: 1.9,
+                speed: 10.4, fireRate: 14, damage: 45, bulletSpeed: 30, energyCost: 95,
+                isChargeBeam: true,
+                desc: 'Agile rail-interceptor that charges for 0.8s before unleashing a massive piercing white-blue laser beam.',
+                evolvesTo: []
+            },
+            destroyer: {
+                name: 'DESTROYER', tier: 7, maxGems: 1000, radius: 41, color: '#f43f5e',
+                shield: 1180, shieldRegen: 0.35, energy: 920, energyRegen: 2.3,
+                speed: 8.5, fireRate: 5, damage: 24, bulletSpeed: 21, energyCost: 34,
+                desc: 'TIE-Interceptor heavy gunship unleashing a rapid storm of 8 heavy center bolts and 16 wing lasers.',
+                evolvesTo: []
+            },
+            aries: {
+                name: 'ARIES', tier: 7, maxGems: 1000, radius: 47, color: '#fbbf24',
+                shield: 2400, shieldRegen: 0.56, energy: 840, energyRegen: 1.85,
+                speed: 8.8, fireRate: 9, damage: 34, bulletSpeed: 18, energyCost: 30,
+                ramDamage: 145, armorFactor: 0.55,
+                desc: 'Armored battering-ram titan firing 7 heavy cannons backward to rocket into foes with devastating force.',
+                evolvesTo: []
+            }
+        };
+
+        // --- UPGRADE DEFINITIONS ---
+        const UPGRADE_CONFIG = [
+            { id: 'shieldCap', label: 'Shield Cap', key: '1', max: 8 },
+            { id: 'shieldRegen', label: 'Shield Regen', key: '2', max: 8 },
+            { id: 'energyCap', label: 'Energy Cap', key: '3', max: 8 },
+            { id: 'energyRegen', label: 'Energy Regen', key: '4', max: 8 },
+            { id: 'damage', label: 'Laser Dmg', key: '5', max: 8 },
+            { id: 'speed', label: 'Thrusters', key: '6', max: 8 }
+        ];
+
+        // --- GAME STATE ---
+        let gameActive = false;
+        let score = 0;
+        let stars = [];
+        let asteroids = [];
+        let gems = [];
+        let bullets = [];
+        let beams = [];
+        let particles = [];
+        let enemies = [];
+
+        // --- TRYSTERO MULTIPLAYER STATE ---
+        let mpRoom = null;
+        let mpRoomCode = '';
+        let sendStatePacket = null;
+        let sendBuildPacket = null;
+        let remotePeers = {};
+        let pendingFireBatch = [];
+        let lastStateSyncTime = 0;
+        const STATE_SYNC_INTERVAL_MS = 40; // ~25 updates per second
+
+        const keys = {};
+        const mouse = { x: width / 2, y: height / 2, down: false, active: false };
+        const touch = { active: false, dx: 0, dy: 0, firing: false };
+
+        let player = null;
+
+        function createPlayer() {
+            const base = SHIPS.fly;
+            return {
+                x: WORLD_SIZE / 2,
+                y: WORLD_SIZE / 2,
+                vx: 0,
+                vy: 0,
+                angle: -Math.PI / 2,
+                type: 'fly',
+                gems: 0,
+                shield: base.shield,
+                maxShield: base.shield,
+                shieldRegen: base.shieldRegen,
+                energy: base.energy,
+                maxEnergy: base.energy,
+                energyRegen: base.energyRegen,
+                speed: base.speed,
+                damage: base.damage,
+                fireRate: base.fireRate,
+                bulletSpeed: base.bulletSpeed,
+                energyCost: base.energyCost,
+                radius: base.radius,
+                fireCooldown: 0,
+                invuln: 90,
+                charging: false,
+                chargeTimer: 0,
+                upgrades: {
+                    shieldCap: 0,
+                    shieldRegen: 0,
+                    energyCap: 0,
+                    energyRegen: 0,
+                    damage: 0,
+                    speed: 0
+                }
+            };
+        }
+
+        function applyShipStats(shipKey, preserveGems = false) {
+            const spec = SHIPS[shipKey];
+            player.type = shipKey;
+            player.radius = spec.radius;
+            player.fireRate = spec.fireRate;
+            player.bulletSpeed = spec.bulletSpeed;
+            player.energyCost = spec.energyCost;
+
+            const u = player.upgrades;
+            player.maxShield = Math.round(spec.shield * (1 + u.shieldCap * 0.14));
+            player.shieldRegen = spec.shieldRegen * (1 + u.shieldRegen * 0.22);
+            player.maxEnergy = Math.round(spec.energy * (1 + u.energyCap * 0.14));
+            player.energyRegen = spec.energyRegen * (1 + u.energyRegen * 0.22);
+            player.damage = Math.round(spec.damage * (1 + u.damage * 0.18));
+            player.speed = spec.speed * (1 + u.speed * 0.08);
+
+            if (!preserveGems) {
+                player.gems = 0;
+            }
+            player.shield = player.maxShield;
+            player.energy = player.maxEnergy;
+            player.charging = false;
+            player.chargeTimer = 0;
+            renderUpgradeButtons();
+            broadcastBuildPacket();
+        }
+
+        // --- TRYSTERO TWO-STREAM NETWORKING ---
+        function updateLobbyHud() {
+            const codeEl = document.getElementById('hud-room-code');
+            const countEl = document.getElementById('hud-peer-count');
+            if (codeEl) codeEl.textContent = `LOBBY: ${mpRoomCode || 'SOLO'}`;
+            if (countEl) countEl.textContent = `PILOTS: ${1 + Object.keys(remotePeers).length}`;
+        }
+
+        // Stream 2: Event-driven packet sent ONLY on spawn, evolution, or stat upgrade
+        function broadcastBuildPacket(targetPeerId = null) {
+            if (!sendBuildPacket || !player) return;
+            const payload = {
+                type: player.type,
+                damage: player.damage,
+                radius: player.radius
+            };
+            try {
+                if (targetPeerId) {
+                    sendBuildPacket(payload, targetPeerId);
+                } else {
+                    sendBuildPacket(payload);
+                }
+            } catch (e) {}
+        }
+
+        // Stream 1: High-frequency (~25Hz) state packet with position, angle, velocity, and newly spawned bullets
+        function broadcastStatePacket(now) {
+            if (!sendStatePacket || !player) return;
+            if (now - lastStateSyncTime < STATE_SYNC_INTERVAL_MS) return;
+            lastStateSyncTime = now;
+
+            const payload = {
+                x: Math.round(player.x * 10) / 10,
+                y: Math.round(player.y * 10) / 10,
+                vx: Math.round(player.vx * 100) / 100,
+                vy: Math.round(player.vy * 100) / 100,
+                angle: Math.round(player.angle * 1000) / 1000,
+                charging: player.charging ? 1 : 0,
+                chargeProgress: player.charging ? Math.min(1, player.chargeTimer / 48) : 0,
+                invuln: player.invuln > 0 ? 1 : 0
+            };
+
+            if (pendingFireBatch.length > 0) {
+                payload.shots = pendingFireBatch.splice(0, pendingFireBatch.length);
+            }
+
+            try {
+                sendStatePacket(payload);
+            } catch (e) {}
+        }
+
+        function spawnRemoteBullet(peer, shot) {
+            const spec = SHIPS[peer.type] || SHIPS.fly;
+            const bAngle = peer.angle + (shot.angOffset || 0);
+            const speed = spec.bulletSpeed + (shot.spdBonus || 0);
+            const spawnDist = peer.radius + 8;
+
+            bullets.push({
+                x: peer.x + Math.cos(bAngle) * spawnDist,
+                y: peer.y + Math.sin(bAngle) * spawnDist,
+                vx: Math.cos(bAngle) * speed + peer.vx * 0.25,
+                vy: Math.sin(bAngle) * speed + peer.vy * 0.25,
+                damage: (peer.damage || spec.damage) * (shot.dmgMult || 1),
+                radius: shot.r || 4,
+                color: shot.col || spec.color,
+                life: shot.life || 55,
+                isEnemy: true,
+                ownerPeerId: peer.id,
+                splitStage: shot.splitStage || 0
+            });
+        }
+
+        function fireRemoteEvisceratorBeam(peer) {
+            const maxLen = 1150;
+            const startX = peer.x + Math.cos(peer.angle) * (peer.radius + 10);
+            const startY = peer.y + Math.sin(peer.angle) * (peer.radius + 10);
+            const endX = startX + Math.cos(peer.angle) * maxLen;
+            const endY = startY + Math.sin(peer.angle) * maxLen;
+
+            beams.push({
+                x1: startX, y1: startY,
+                x2: endX, y2: endY,
+                life: 16, maxLife: 16
+            });
+
+            if (player && player.invuln <= 0 && gameActive) {
+                const d = distToSegment(player.x, player.y, startX, startY, endX, endY);
+                if (d < player.radius + 16) {
+                    const spec = SHIPS[player.type] || SHIPS.fly;
+                    const beamDmg = (peer.damage || 45) * 49.5 * (spec.armorFactor || 1);
+                    damagePlayer(beamDmg, peer.x, peer.y);
+                }
+            }
+        }
+
+        async function connectMultiplayerRoom(roomCode) {
+            if (mpRoom) {
+                try { mpRoom.leave(); } catch (e) {}
+                mpRoom = null;
+            }
+            remotePeers = {};
+            mpRoomCode = roomCode;
+            updateLobbyHud();
+
+            try {
+                if (!trysteroJoinRoom) {
+                    const mod = await import('https://esm.sh/trystero/torrent');
+                    trysteroJoinRoom = mod.joinRoom;
+                }
+                const room = trysteroJoinRoom({ appId: 'starblast-gem-miner-v1' }, `lobby-${roomCode.toLowerCase()}`);
+                mpRoom = room;
+
+                const [sendState, getState] = room.makeAction('state');
+                const [sendBuild, getBuild] = room.makeAction('build');
+                sendStatePacket = sendState;
+                sendBuildPacket = sendBuild;
+
+                // Receive Stream 1 (~25Hz position, angle, velocity, and shot spawns)
+                getState((data, peerId) => {
+                    if (!remotePeers[peerId]) {
+                        remotePeers[peerId] = {
+                            id: peerId,
+                            x: data.x,
+                            y: data.y,
+                            targetX: data.x,
+                            targetY: data.y,
+                            vx: data.vx || 0,
+                            vy: data.vy || 0,
+                            angle: data.angle || 0,
+                            type: 'fly',
+                            damage: SHIPS.fly.damage,
+                            radius: SHIPS.fly.radius,
+                            charging: false,
+                            chargeProgress: 0,
+                            invuln: 0,
+                            lastSeen: performance.now()
+                        };
+                        updateLobbyHud();
+                        broadcastBuildPacket(peerId);
+                    }
+
+                    const peer = remotePeers[peerId];
+                    peer.targetX = data.x;
+                    peer.targetY = data.y;
+                    peer.vx = data.vx || 0;
+                    peer.vy = data.vy || 0;
+                    peer.angle = data.angle;
+                    peer.charging = !!data.charging;
+                    peer.chargeProgress = data.chargeProgress || 0;
+                    peer.invuln = data.invuln || 0;
+                    peer.lastSeen = performance.now();
+
+                    if (Array.isArray(data.shots)) {
+                        for (const shot of data.shots) {
+                            if (shot.isBeam) {
+                                fireRemoteEvisceratorBeam(peer);
+                            } else {
+                                spawnRemoteBullet(peer, shot);
+                            }
+                        }
+                    }
+                });
+
+                // Receive Stream 2 (Event-driven ship type and damage stat updates)
+                getBuild((data, peerId) => {
+                    if (!remotePeers[peerId]) {
+                        remotePeers[peerId] = {
+                            id: peerId,
+                            x: WORLD_SIZE / 2,
+                            y: WORLD_SIZE / 2,
+                            targetX: WORLD_SIZE / 2,
+                            targetY: WORLD_SIZE / 2,
+                            vx: 0,
+                            vy: 0,
+                            angle: 0,
+                            type: data.type || 'fly',
+                            damage: data.damage || SHIPS.fly.damage,
+                            radius: data.radius || SHIPS.fly.radius,
+                            charging: false,
+                            chargeProgress: 0,
+                            invuln: 0,
+                            lastSeen: performance.now()
+                        };
+                        updateLobbyHud();
+                    } else {
+                        const peer = remotePeers[peerId];
+                        if (data.type && SHIPS[data.type]) {
+                            peer.type = data.type;
+                            peer.radius = data.radius || SHIPS[data.type].radius;
+                        }
+                        if (typeof data.damage === 'number') {
+                            peer.damage = data.damage;
+                        }
+                    }
+                });
+
+                room.onPeerJoin((peerId) => {
+                    broadcastBuildPacket(peerId);
+                    updateLobbyHud();
+                });
+
+                room.onPeerLeave((peerId) => {
+                    delete remotePeers[peerId];
+                    updateLobbyHud();
+                });
+
+                // Broadcast initial build immediately
+                broadcastBuildPacket();
+            } catch (err) {
+                console.warn('P2P connection running in local mode:', err);
+            }
+        }
+
+        // --- WORLD GENERATION ---
+        function initWorld() {
+            stars = [];
+            for (let i = 0; i < 450; i++) {
+                stars.push({
+                    x: Math.random() * WORLD_SIZE,
+                    y: Math.random() * WORLD_SIZE,
+                    size: Math.random() * 2 + 0.5,
+                    alpha: Math.random() * 0.7 + 0.2,
+                    parallax: Math.random() * 0.4 + 0.6
+                });
+            }
+
+            asteroids = [];
+            for (let i = 0; i < 110; i++) {
+                spawnAsteroid();
+            }
+
+            enemies = [];
+            for (let i = 0; i < 10; i++) {
+                spawnEnemy();
+            }
+
+            gems = [];
+            bullets = [];
+            beams = [];
+            particles = [];
+        }
+
+        function spawnAsteroid(x, y, sizeTier) {
+            const tier = sizeTier || (Math.random() < 0.25 ? 3 : (Math.random() < 0.6 ? 2 : 1));
+            const radius = tier === 3 ? 65 : (tier === 2 ? 40 : 22);
+            const hp = tier === 3 ? 160 : (tier === 2 ? 75 : 30);
+            const gemValue = tier === 3 ? 18 : (tier === 2 ? 8 : 3);
+
+            let ax = x !== undefined ? x : Math.random() * (WORLD_SIZE - 200) + 100;
+            let ay = y !== undefined ? y : Math.random() * (WORLD_SIZE - 200) + 100;
+
+            if (x === undefined && player && Math.hypot(ax - player.x, ay - player.y) < 350) {
+                ax = (ax + 700) % WORLD_SIZE;
+            }
+
+            const vertices = [];
+            const points = 10 + tier * 2;
+            for (let i = 0; i < points; i++) {
+                const ang = (i / points) * Math.PI * 2;
+                const dist = radius * (0.78 + Math.random() * 0.35);
+                vertices.push({ x: Math.cos(ang) * dist, y: Math.sin(ang) * dist });
+            }
+
+            asteroids.push({
+                x: ax,
+                y: ay,
+                vx: (Math.random() - 0.5) * 1.4,
+                vy: (Math.random() - 0.5) * 1.4,
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.02,
+                radius,
+                hp,
+                maxHp: hp,
+                tier,
+                gemValue,
+                vertices
+            });
+        }
+
+        function spawnEnemy() {
+            const types = ['fly', 'delta', 'trident', 'pulse'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const spec = SHIPS[type];
+            let ex = Math.random() * (WORLD_SIZE - 400) + 200;
+            let ey = Math.random() * (WORLD_SIZE - 400) + 200;
+
+            if (player && Math.hypot(ex - player.x, ey - player.y) < 650) {
+                ex = (ex + 900) % WORLD_SIZE;
+            }
+
+            enemies.push({
+                x: ex,
+                y: ey,
+                vx: 0,
+                vy: 0,
+                angle: Math.random() * Math.PI * 2,
+                type,
+                radius: spec.radius,
+                shield: spec.shield * 0.85,
+                maxShield: spec.shield * 0.85,
+                speed: spec.speed * 0.72,
+                damage: spec.damage * 0.75,
+                fireRate: spec.fireRate + 8,
+                fireCooldown: Math.random() * 30,
+                gems: 12 + Math.floor(Math.random() * 15)
+            });
+        }
+
+        function spawnGems(x, y, totalValue) {
+            let remaining = totalValue;
+            while (remaining > 0) {
+                const val = remaining >= 5 ? 5 : 1;
+                remaining -= val;
+                const ang = Math.random() * Math.PI * 2;
+                const spd = Math.random() * 3.5 + 1;
+                gems.push({
+                    x,
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    value: val,
+                    radius: val === 5 ? 9 : 6,
+                    life: 1200
+                });
+            }
+        }
+
+        function spawnExplosion(x, y, color, count = 14) {
+            for (let i = 0; i < count; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = Math.random() * 4.5 + 1;
+                particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    color,
+                    size: Math.random() * 3.5 + 1.5,
+                    life: 25 + Math.random() * 15,
+                    maxLife: 40
+                });
+            }
+        }
+
+        // --- WEAPON FIRING PATTERNS ---
+        function fireWeapon(shooter, isEnemy = false) {
+            const spec = SHIPS[shooter.type];
+
+            if (!isEnemy && spec.isChargeBeam) {
+                if (!shooter.charging && shooter.energy >= shooter.energyCost) {
+                    shooter.charging = true;
+                    shooter.chargeTimer = 0;
+                    playSound('charge');
+                }
+                return;
+            }
+
+            if (!isEnemy && shooter.energy < shooter.energyCost) return;
+
+            if (!isEnemy) {
+                shooter.energy -= shooter.energyCost;
+                playSound('laser');
+            }
+
+            const spawnBullet = (angOffset, spdBonus = 0, dmgMult = 1, r = 4, col = null, life = 55, splitStage = 0) => {
+                const bAngle = shooter.angle + angOffset;
+                const speed = spec.bulletSpeed + spdBonus;
+                const spawnDist = shooter.radius + 8;
+
+                if (!isEnemy && mpRoom) {
+                    pendingFireBatch.push({
+                        angOffset,
+                        spdBonus,
+                        dmgMult,
+                        r,
+                        col: col || spec.color,
+                        life,
+                        splitStage
+                    });
+                }
+
+                bullets.push({
+                    x: shooter.x + Math.cos(bAngle) * spawnDist,
+                    y: shooter.y + Math.sin(bAngle) * spawnDist,
+                    vx: Math.cos(bAngle) * speed + shooter.vx * 0.25,
+                    vy: Math.sin(bAngle) * speed + shooter.vy * 0.25,
+                    damage: shooter.damage * dmgMult,
+                    radius: r,
+                    color: col || (isEnemy ? '#fb7185' : spec.color),
+                    life,
+                    isEnemy,
+                    splitStage
+                });
+            };
+
+            switch (shooter.type) {
+                case 'fly':
+                    spawnBullet(0, 0, 1, 4);
+                    break;
+                case 'delta':
+                    spawnBullet(-0.08, 0, 0.75, 4);
+                    spawnBullet(0.08, 0, 0.75, 4);
+                    break;
+                case 'trident':
+                    spawnBullet(0, 1, 0.7, 4.5);
+                    spawnBullet(-0.22, 0, 0.65, 4);
+                    spawnBullet(0.22, 0, 0.65, 4);
+                    break;
+                case 'pulse':
+                    spawnBullet(-0.05, 1.5, 0.7, 3.8);
+                    spawnBullet(0.05, 1.5, 0.7, 3.8);
+                    break;
+                case 'sideFighter':
+                    spawnBullet(-0.06, 0, 0.7, 4);
+                    spawnBullet(0.06, 0, 0.7, 4);
+                    spawnBullet(-0.75, -1, 0.55, 3.5);
+                    spawnBullet(0.75, -1, 0.55, 3.5);
+                    break;
+                case 'yDefender':
+                    spawnBullet(-0.18, 0, 0.6, 4.5);
+                    spawnBullet(-0.06, 1, 0.65, 4.5);
+                    spawnBullet(0.06, 1, 0.65, 4.5);
+                    spawnBullet(0.18, 0, 0.6, 4.5);
+                    break;
+                case 'vanguard':
+                    spawnBullet(0, 4, 1.0, 6.5, '#e879f9');
+                    spawnBullet(-0.12, 0, 0.35, 3.5);
+                    spawnBullet(0.12, 0, 0.35, 3.5);
+                    break;
+                case 'mercury':
+                    spawnBullet(-0.05, 1.5, 0.68, 4, '#38bdf8');
+                    spawnBullet(0.05, 1.5, 0.68, 4, '#38bdf8');
+                    break;
+                case 'xWarrior':
+                    spawnBullet(-0.18, 0, 0.62, 4.2, '#fb7185');
+                    spawnBullet(-0.06, 1, 0.68, 4.2, '#fb7185');
+                    spawnBullet(0.06, 1, 0.68, 4.2, '#fb7185');
+                    spawnBullet(0.18, 0, 0.62, 4.2, '#fb7185');
+                    break;
+                case 'sideInterceptor':
+                    spawnBullet(-0.05, 1, 0.68, 4, '#f472b6');
+                    spawnBullet(0.05, 1, 0.68, 4, '#f472b6');
+                    spawnBullet(-0.62, -0.5, 0.52, 3.5, '#f472b6');
+                    spawnBullet(0.62, -0.5, 0.52, 3.5, '#f472b6');
+                    break;
+                case 'pioneer':
+                    spawnBullet(-0.26, -0.5, 0.55, 4.2, '#34d399');
+                    spawnBullet(-0.12, 0.5, 0.6, 4.5, '#34d399');
+                    spawnBullet(0, 1.5, 0.72, 5, '#34d399');
+                    spawnBullet(0.12, 0.5, 0.6, 4.5, '#34d399');
+                    spawnBullet(0.26, -0.5, 0.55, 4.2, '#34d399');
+                    break;
+                case 'crusader':
+                    spawnBullet(0, 1.5, 1.15, 7, '#fbbf24');
+                    spawnBullet(-0.16, 0, 0.55, 4.2, '#fbbf24');
+                    spawnBullet(0.16, 0, 0.55, 4.2, '#fbbf24');
+                    break;
+                case 'uSniper':
+                    spawnBullet(-0.07, 4.5, 0.95, 6.2, '#d8b4fe');
+                    spawnBullet(0.07, 4.5, 0.95, 6.2, '#d8b4fe');
+                    break;
+                case 'vGun':
+                    for (let i = 0; i < 8; i++) {
+                        spawnBullet((i * Math.PI) / 4, 0, 0.55, 3.8, '#2dd4bf');
+                    }
+                    break;
+                case 'dart':
+                    spawnBullet(Math.PI - 0.14, 1, 0.85, 6.2, '#38bdf8');
+                    spawnBullet(Math.PI, 1.5, 0.95, 6.8, '#7dd3fc');
+                    spawnBullet(Math.PI + 0.14, 1, 0.85, 6.2, '#38bdf8');
+                    shooter.vx += Math.cos(shooter.angle) * 2.1;
+                    shooter.vy += Math.sin(shooter.angle) * 2.1;
+                    break;
+                case 'tWarrior':
+                    spawnBullet(-0.2 + (Math.random() - 0.5) * 0.22, 0, 0.55, 3.8, '#fb7185');
+                    spawnBullet((Math.random() - 0.5) * 0.22, 1, 0.6, 4.0, '#fda4af');
+                    spawnBullet(0.2 + (Math.random() - 0.5) * 0.22, 0, 0.55, 3.8, '#fb7185');
+                    break;
+                case 'shadowX2':
+                    spawnBullet(-0.05, 2, 0.85, 4.4, '#f472b6');
+                    spawnBullet(0.05, 2, 0.85, 4.4, '#f472b6');
+                    break;
+                case 'omega':
+                    spawnBullet(-0.11, 1, 0.8, 5, '#34d399');
+                    spawnBullet(0, 1.5, 0.85, 5.2, '#6ee7b7');
+                    spawnBullet(0.11, 1, 0.8, 5, '#34d399');
+                    break;
+                case 'yFighter':
+                    spawnBullet(0, 1.5, 1.25, 7.5, '#fbbf24');
+                    spawnBullet(-0.16, 0.5, 0.65, 4.6, '#fcd34d');
+                    spawnBullet(0.16, 0.5, 0.65, 4.6, '#fcd34d');
+                    break;
+                case 'batDefender':
+                    spawnBullet(0, 4.5, 1.15, 7.2, '#c084fc');
+                    spawnBullet(-0.13, 0.5, 0.45, 4, '#a855f7');
+                    spawnBullet(0.13, 0.5, 0.45, 4, '#a855f7');
+                    break;
+                case 'advFighter':
+                    spawnBullet(-0.05, 1.5, 0.95, 5.5, '#e879f9');
+                    spawnBullet(0.05, 1.5, 0.95, 5.5, '#e879f9');
+                    spawnBullet(-0.22, 0, 0.48, 3.6, '#c084fc');
+                    spawnBullet(-0.14, 0.5, 0.48, 3.6, '#c084fc');
+                    spawnBullet(0.14, 0.5, 0.48, 3.6, '#c084fc');
+                    spawnBullet(0.22, 0, 0.48, 3.6, '#c084fc');
+                    break;
+                case 'scorpion':
+                    spawnBullet(0, 5, 1.25, 7.5, '#d8b4fe');
+                    spawnBullet(-0.15, 0, 0.4, 3.8, '#a855f7');
+                    spawnBullet(0.15, 0, 0.4, 3.8, '#a855f7');
+                    break;
+                case 'ultra':
+                    for (let i = 0; i < 20; i++) {
+                        spawnBullet((i * Math.PI) / 10, 0, 0.55, 3.8, '#2dd4bf');
+                    }
+                    break;
+                case 'lightning':
+                    for (let i = -2; i <= 2; i++) {
+                        spawnBullet(Math.PI + i * 0.06, 1.8, 0.72, 5.5, '#38bdf8');
+                    }
+                    shooter.vx += Math.cos(shooter.angle) * 2.8;
+                    shooter.vy += Math.sin(shooter.angle) * 2.8;
+                    break;
+                case 'recursive':
+                    spawnBullet(0, 0, 1.35, 8.5, '#fb7185', 38, 1);
+                    break;
+                case 'aSpeedster':
+                    spawnBullet(-0.04, 2.5, 0.9, 4.6, '#f472b6');
+                    spawnBullet(0.04, 2.5, 0.9, 4.6, '#f472b6');
+                    break;
+                case 'barracuda':
+                    spawnBullet(-0.08, 1, 0.95, 5.8, '#34d399');
+                    spawnBullet(0.08, 1, 0.95, 5.8, '#34d399');
+                    break;
+                case 'neptune':
+                    spawnBullet(0, 2, 1.25, 7.4, '#22d3ee');
+                    spawnBullet(-0.34, 0, 0.36, 3.5, '#67e8f9');
+                    spawnBullet(-0.24, 0.4, 0.36, 3.5, '#67e8f9');
+                    spawnBullet(-0.14, 0.8, 0.36, 3.5, '#67e8f9');
+                    spawnBullet(0.14, 0.8, 0.36, 3.5, '#67e8f9');
+                    spawnBullet(0.24, 0.4, 0.36, 3.5, '#67e8f9');
+                    spawnBullet(0.34, 0, 0.36, 3.5, '#67e8f9');
+                    break;
+                case 'tanker':
+                    spawnBullet(0, 0.5, 1.05, 6.8, '#fbbf24');
+                    break;
+                case 'oDefender':
+                    spawnBullet(0, 4.8, 1.2, 7.4, '#818cf8');
+                    spawnBullet(-0.16, 0.5, 0.45, 4.2, '#a5b4fc');
+                    spawnBullet(0.16, 0.5, 0.45, 4.2, '#a5b4fc');
+                    break;
+                case 'odyssey':
+                    spawnBullet(-0.55, 0, 0.65, 4.2, '#38bdf8');
+                    spawnBullet(0.55, 0, 0.65, 4.2, '#38bdf8');
+                    spawnBullet(-1.15, -0.5, 0.6, 4.0, '#7dd3fc');
+                    spawnBullet(1.15, -0.5, 0.6, 4.0, '#7dd3fc');
+                    break;
+                case 'destroyer':
+                    for (let i = -3.5; i <= 3.5; i += 1) {
+                        spawnBullet(i * 0.025, 1.5, 0.85, 5.2, '#fb7185');
+                    }
+                    for (let i = 0; i < 8; i++) {
+                        const off = 0.14 + i * 0.022;
+                        spawnBullet(-off, 0.5, 0.34, 3.2, '#fda4af');
+                        spawnBullet(off, 0.5, 0.34, 3.2, '#fda4af');
+                    }
+                    break;
+                case 'aries':
+                    for (let i = -3; i <= 3; i++) {
+                        spawnBullet(Math.PI + i * 0.075, 1.8, 0.88, 6.2, '#fbbf24');
+                    }
+                    shooter.vx += Math.cos(shooter.angle) * 2.5;
+                    shooter.vy += Math.sin(shooter.angle) * 2.5;
+                    break;
+            }
+        }
+
+        function distToSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+            let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+        }
+
+        function fireEvisceratorBeam(shooter) {
+            shooter.energy = Math.max(0, shooter.energy - shooter.energyCost);
+            playSound('beam');
+
+            if (mpRoom) {
+                pendingFireBatch.push({ isBeam: true });
+            }
+
+            const maxLen = 1150;
+            const startX = shooter.x + Math.cos(shooter.angle) * (shooter.radius + 10);
+            const startY = shooter.y + Math.sin(shooter.angle) * (shooter.radius + 10);
+            const endX = startX + Math.cos(shooter.angle) * maxLen;
+            const endY = startY + Math.sin(shooter.angle) * maxLen;
+            const beamDamage = shooter.damage * 49.5;
+
+            beams.push({
+                x1: startX, y1: startY,
+                x2: endX, y2: endY,
+                life: 16, maxLife: 16
+            });
+
+            shooter.vx -= Math.cos(shooter.angle) * 3.8;
+            shooter.vy -= Math.sin(shooter.angle) * 3.8;
+
+            for (let j = asteroids.length - 1; j >= 0; j--) {
+                const a = asteroids[j];
+                if (distToSegment(a.x, a.y, startX, startY, endX, endY) < a.radius + 16) {
+                    a.hp -= beamDamage;
+                    spawnExplosion(a.x, a.y, '#bae6fd', 10);
+                    if (a.hp <= 0) {
+                        destroyAsteroid(j);
+                    }
+                }
+            }
+
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                const en = enemies[j];
+                if (distToSegment(en.x, en.y, startX, startY, endX, endY) < en.radius + 16) {
+                    en.shield -= beamDamage;
+                    spawnExplosion(en.x, en.y, '#e0f2fe', 14);
+                    if (en.shield <= 0) {
+                        score += 250;
+                        spawnGems(en.x, en.y, en.gems);
+                        spawnExplosion(en.x, en.y, '#38bdf8', 24);
+                        playSound('explosion');
+                        enemies.splice(j, 1);
+                        spawnEnemy();
+                    }
+                }
+            }
+        }
+
+        // --- UPGRADE & EVOLUTION LOGIC ---
+        function purchaseUpgrade(upgradeId) {
+            if (!gameActive || !player) return;
+            const currentLvl = player.upgrades[upgradeId];
+            const cfg = UPGRADE_CONFIG.find(u => u.id === upgradeId);
+            if (!cfg || currentLvl >= cfg.max) return;
+
+            const cost = (currentLvl + 1) * 5;
+            if (player.gems < cost) return;
+
+            player.gems -= cost;
+            player.upgrades[upgradeId]++;
+            score += cost * 10;
+            playSound('upgrade');
+
+            const spec = SHIPS[player.type];
+            const u = player.upgrades;
+            player.maxShield = Math.round(spec.shield * (1 + u.shieldCap * 0.14));
+            player.shield = Math.min(player.maxShield, player.shield + spec.shield * 0.14);
+            player.shieldRegen = spec.shieldRegen * (1 + u.shieldRegen * 0.22);
+            player.maxEnergy = Math.round(spec.energy * (1 + u.energyCap * 0.14));
+            player.energy = Math.min(player.maxEnergy, player.energy + spec.energy * 0.14);
+            player.energyRegen = spec.energyRegen * (1 + u.energyRegen * 0.22);
+            player.damage = Math.round(spec.damage * (1 + u.damage * 0.18));
+            player.speed = spec.speed * (1 + u.speed * 0.08);
+
+            renderUpgradeButtons();
+            broadcastBuildPacket();
+        }
+
+        function evolveShip(targetKey) {
+            if (!gameActive || !player) return;
+            const currentSpec = SHIPS[player.type];
+            if (player.gems < currentSpec.maxGems) return;
+            if (!currentSpec.evolvesTo.includes(targetKey)) return;
+
+            score += currentSpec.maxGems * 15;
+            applyShipStats(targetKey, false);
+            spawnExplosion(player.x, player.y, SHIPS[targetKey].color, 32);
+            playSound('evolve');
+            document.getElementById('evolution-panel').classList.add('hidden');
+        }
+
+        // --- UI RENDERING ---
+        function renderUpgradeButtons() {
+            const list = document.getElementById('upgrade-list');
+            if (!list || !player) return;
+            list.innerHTML = '';
+
+            UPGRADE_CONFIG.forEach(cfg => {
+                const lvl = player.upgrades[cfg.id];
+                const isMax = lvl >= cfg.max;
+                const cost = (lvl + 1) * 5;
+                const canAfford = !isMax && player.gems >= cost;
+
+                const btn = document.createElement('button');
+                btn.className = `upgrade-btn text-left p-1.5 rounded-lg border text-[10px] flex flex-col justify-between ${
+                    isMax
+                        ? 'bg-slate-900/60 border-slate-700 text-slate-500 cursor-default'
+                        : canAfford
+                            ? 'bg-slate-800/90 border-cyan-500/60 text-slate-100 cursor-pointer'
+                            : 'bg-slate-900/70 border-slate-800 text-slate-400 cursor-not-allowed'
+                }`;
+                btn.disabled = !canAfford;
+                btn.onclick = () => purchaseUpgrade(cfg.id);
+
+                btn.innerHTML = `
+                    <div class="flex justify-between items-center w-full">
+                        <span class="font-bold truncate">[${cfg.key}] ${cfg.label}</span>
+                        <span class="${isMax ? 'text-emerald-400' : 'text-rose-400'} font-bold">${isMax ? 'MAX' : cost + 'G'}</span>
+                    </div>
+                    <div class="w-full h-1 bg-slate-950 rounded-full mt-1 overflow-hidden">
+                        <div class="h-full bg-cyan-400" style="width: ${(lvl / cfg.max) * 100}%"></div>
+                    </div>
+                `;
+                list.appendChild(btn);
+            });
+        }
+
+        function updateHUD() {
+            if (!player) return;
+            const spec = SHIPS[player.type];
+
+            document.getElementById('ship-name').textContent = `${spec.name} [TIER ${spec.tier}]`;
+            document.getElementById('score-display').textContent = `SCORE: ${score}`;
+
+            const shPct = Math.max(0, Math.min(100, (player.shield / player.maxShield) * 100));
+            document.getElementById('shield-bar').style.width = `${shPct}%`;
+            document.getElementById('shield-text').textContent = `${Math.ceil(player.shield)} / ${player.maxShield}`;
+
+            const enPct = Math.max(0, Math.min(100, (player.energy / player.maxEnergy) * 100));
+            document.getElementById('energy-bar').style.width = `${enPct}%`;
+            document.getElementById('energy-text').textContent = `${Math.ceil(player.energy)} / ${player.maxEnergy}`;
+
+            const gemPct = Math.max(0, Math.min(100, (player.gems / spec.maxGems) * 100));
+            document.getElementById('gem-bar').style.width = `${gemPct}%`;
+            document.getElementById('gem-text').textContent = `${player.gems} / ${spec.maxGems}`;
+
+            const evoPanel = document.getElementById('evolution-panel');
+            if (player.gems >= spec.maxGems && spec.evolvesTo.length > 0) {
+                if (evoPanel.classList.contains('hidden')) {
+                    const opts = document.getElementById('evolution-options');
+                    opts.innerHTML = '';
+                    spec.evolvesTo.forEach(nextKey => {
+                        const nextSpec = SHIPS[nextKey];
+                        const btn = document.createElement('button');
+                        btn.className = 'evolve-btn px-3.5 py-2 rounded-xl text-xs font-bold text-white cursor-pointer transition-all';
+                        btn.textContent = `EVOLVE: ${nextSpec.name}`;
+                        btn.onclick = () => evolveShip(nextKey);
+                        opts.appendChild(btn);
+                    });
+                    evoPanel.classList.remove('hidden');
+                }
+            } else {
+                evoPanel.classList.add('hidden');
+            }
+        }
+
+        // --- TECH TREE MODAL ---
+        function selectShipInfo(shipKey) {
+            const spec = SHIPS[shipKey];
+            if (!spec) return;
+            document.getElementById('detail-name').textContent = spec.name;
+            document.getElementById('detail-tier').textContent = `TIER ${spec.tier}`;
+            document.getElementById('detail-desc').textContent = spec.desc;
+            document.getElementById('detail-shield').textContent = spec.shield;
+            document.getElementById('detail-energy').textContent = spec.energy;
+            document.getElementById('detail-cap').textContent = `${spec.maxGems} G`;
+            document.getElementById('detail-speed').textContent = spec.speed.toFixed(1);
+
+            const evoNames = spec.evolvesTo.map(k => SHIPS[k]?.name).filter(Boolean);
+            document.getElementById('detail-evolves').textContent = evoNames.length > 0
+                ? `Evolves to: ${evoNames.join(', ')}`
+                : 'Apex Tier 7 Starship';
+
+            document.querySelectorAll('.tree-node-btn').forEach(el => {
+                if (el.dataset.ship === shipKey) {
+                    el.classList.add('border-cyan-400', 'bg-cyan-950/70', 'text-white');
+                    el.classList.remove('border-slate-700', 'bg-slate-900/90', 'text-slate-300');
+                } else {
+                    el.classList.remove('border-cyan-400', 'bg-cyan-950/70', 'text-white');
+                    el.classList.add('border-slate-700', 'bg-slate-900/90', 'text-slate-300');
+                }
+            });
+        }
+
+        function buildTechTreeUI() {
+            const grid = document.getElementById('tech-tree-grid');
+            grid.innerHTML = '';
+
+            for (let tier = 1; tier <= 7; tier++) {
+                const col = document.createElement('div');
+                col.className = 'flex flex-col justify-around gap-2.5 min-w-[135px]';
+
+                const header = document.createElement('div');
+                header.className = 'text-[10px] font-bold text-center text-slate-400 tracking-widest pb-1 border-b border-slate-800';
+                header.textContent = `TIER ${tier}`;
+                col.appendChild(header);
+
+                const tierShips = Object.entries(SHIPS).filter(([, s]) => s.tier === tier);
+                tierShips.forEach(([key, spec]) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.dataset.ship = key;
+                    btn.className = 'tree-node-btn px-2.5 py-2 rounded-lg border border-slate-700 bg-slate-900/90 text-slate-300 hover:border-cyan-400 text-[10px] font-bold tracking-wider transition-all cursor-pointer text-center shadow';
+                    btn.textContent = spec.name;
+                    btn.onclick = () => selectShipInfo(key);
+                    col.appendChild(btn);
+                });
+
+                grid.appendChild(col);
+            }
+
+            selectShipInfo(player ? player.type : 'fly');
+            requestAnimationFrame(drawTechTreeLines);
+        }
+
+        function drawTechTreeLines() {
+            const svg = document.getElementById('tech-tree-lines');
+            const container = document.getElementById('tech-tree-canvas');
+            if (!svg || !container) return;
+
+            const rect = container.getBoundingClientRect();
+            svg.setAttribute('width', container.scrollWidth);
+            svg.setAttribute('height', container.scrollHeight);
+            svg.innerHTML = '';
+
+            const nodeMap = {};
+            document.querySelectorAll('.tree-node-btn').forEach(el => {
+                const r = el.getBoundingClientRect();
+                nodeMap[el.dataset.ship] = {
+                    left: r.left - rect.left,
+                    right: r.right - rect.left,
+                    midY: r.top - rect.top + r.height / 2
+                };
+            });
+
+            Object.entries(SHIPS).forEach(([key, spec]) => {
+                const from = nodeMap[key];
+                if (!from || !spec.evolvesTo) return;
+
+                spec.evolvesTo.forEach(nextKey => {
+                    const to = nodeMap[nextKey];
+                    if (!to) return;
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const midX = (from.right + to.left) / 2;
+                    path.setAttribute('d', `M ${from.right} ${from.midY} C ${midX} ${from.midY}, ${midX} ${to.midY}, ${to.left} ${to.midY}`);
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke', 'rgba(56, 189, 248, 0.35)');
+                    path.setAttribute('stroke-width', '1.8');
+                    svg.appendChild(path);
+                });
+            });
+        }
+
+        // --- DAMAGE & COLLISIONS ---
+        function destroyAsteroid(index) {
+            const a = asteroids[index];
+            score += a.gemValue * 10;
+            spawnGems(a.x, a.y, a.gemValue);
+            spawnExplosion(a.x, a.y, '#94a3b8', 16);
+            playSound('explosion');
+
+            if (a.tier > 1) {
+                spawnAsteroid(a.x - 15, a.y - 10, a.tier - 1);
+                spawnAsteroid(a.x + 15, a.y + 10, a.tier - 1);
+            }
+            asteroids.splice(index, 1);
+            if (asteroids.length < 95) spawnAsteroid();
+        }
+
+        function damagePlayer(amount, srcX, srcY) {
+            if (!player || player.invuln > 0 || !gameActive) return;
+
+            const pushAng = Math.atan2(player.y - srcY, player.x - srcX);
+            player.vx += Math.cos(pushAng) * 3;
+            player.vy += Math.sin(pushAng) * 3;
+
+            if (player.shield >= amount) {
+                player.shield -= amount;
+            } else {
+                const overflow = amount - player.shield;
+                player.shield = 0;
+                const gemLoss = Math.ceil(overflow / 8);
+                if (player.gems >= gemLoss) {
+                    player.gems -= gemLoss;
+                    spawnGems(player.x, player.y, Math.max(1, Math.floor(gemLoss * 0.5)));
+                } else {
+                    gameOver();
+                }
+            }
+        }
+
+        // --- MAIN UPDATE LOOP ---
+        function update() {
+            if (!gameActive || !player) return;
+
+            const spec = SHIPS[player.type];
+
+            // Player movement
+            let ix = 0;
+            let iy = 0;
+            if (keys['KeyW'] || keys['ArrowUp']) iy -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) iy += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+
+            if (touch.active) {
+                ix = touch.dx;
+                iy = touch.dy;
+            }
+
+            const mag = Math.hypot(ix, iy);
+            if (mag > 0) {
+                const norm = mag > 1 ? 1 / mag : 1;
+                player.vx += ix * norm * (player.speed * 0.14);
+                player.vy += iy * norm * (player.speed * 0.14);
+            }
+
+            player.vx *= 0.92;
+            player.vy *= 0.92;
+            const curSpd = Math.hypot(player.vx, player.vy);
+            if (curSpd > player.speed * 1.35) {
+                player.vx = (player.vx / curSpd) * (player.speed * 1.35);
+                player.vy = (player.vy / curSpd) * (player.speed * 1.35);
+            }
+
+            player.x = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.x + player.vx));
+            player.y = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.y + player.vy));
+
+            // Aiming
+            if (mouse.active) {
+                const screenCenterX = width / 2;
+                const screenCenterY = height / 2;
+                player.angle = Math.atan2(mouse.y - screenCenterY, mouse.x - screenCenterX);
+            } else if (mag > 0.1) {
+                player.angle = Math.atan2(iy, ix);
+            }
+
+            // Regen & Invulnerability
+            if (player.invuln > 0) player.invuln--;
+            player.shield = Math.min(player.maxShield, player.shield + player.shieldRegen);
+            player.energy = Math.min(player.maxEnergy, player.energy + player.energyRegen);
+
+            // Firing & Eviscerator Charge
+            if (player.fireCooldown > 0) player.fireCooldown--;
+            const wantsFire = mouse.down || keys['Space'] || touch.firing;
+
+            if (spec.isChargeBeam) {
+                if (player.charging) {
+                    player.chargeTimer++;
+                    if (player.chargeTimer >= 48) { // 0.8 seconds at 60fps
+                        player.charging = false;
+                        player.chargeTimer = 0;
+                        player.fireCooldown = player.fireRate;
+                        fireEvisceratorBeam(player);
+                    }
+                } else if (wantsFire && player.fireCooldown <= 0) {
+                    fireWeapon(player, false);
+                }
+            } else if (wantsFire && player.fireCooldown <= 0) {
+                fireWeapon(player, false);
+                player.fireCooldown = player.fireRate;
+            }
+
+            // Broadcast Stream 1 (~25Hz)
+            broadcastStatePacket(performance.now());
+
+            // Interpolate remote multiplayer ships
+            Object.values(remotePeers).forEach(peer => {
+                peer.x += (peer.targetX - peer.x) * 0.35;
+                peer.y += (peer.targetY - peer.y) * 0.35;
+            });
+
+            // Update Asteroids & Player Ramming
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                const a = asteroids[i];
+                a.x += a.vx;
+                a.y += a.vy;
+                a.rot += a.vRot;
+
+                if (a.x < a.radius || a.x > WORLD_SIZE - a.radius) a.vx *= -1;
+                if (a.y < a.radius || a.y > WORLD_SIZE - a.radius) a.vy *= -1;
+
+                const dist = Math.hypot(player.x - a.x, player.y - a.y);
+                if (dist < player.radius + a.radius) {
+                    const ang = Math.atan2(a.y - player.y, a.x - player.x);
+                    const overlap = player.radius + a.radius - dist;
+                    a.x += Math.cos(ang) * overlap * 0.5;
+                    a.y += Math.sin(ang) * overlap * 0.5;
+                    player.x -= Math.cos(ang) * overlap * 0.5;
+                    player.y -= Math.sin(ang) * overlap * 0.5;
+
+                    const ramDmg = spec.ramDamage || 10;
+                    a.hp -= ramDmg;
+                    const incoming = 8 * (spec.armorFactor || 1);
+                    damagePlayer(incoming, a.x, a.y);
+
+                    if (a.hp <= 0) {
+                        destroyAsteroid(i);
+                    }
+                }
+            }
+
+            // Update Bullets & Recursive Splitting
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.x += b.vx;
+                b.y += b.vy;
+                b.life--;
+
+                if (b.life <= 0 || b.x < 0 || b.x > WORLD_SIZE || b.y < 0 || b.y > WORLD_SIZE) {
+                    if (b.splitStage === 1 || b.splitStage === 2) {
+                        const count = b.splitStage === 1 ? 8 : 4;
+                        const nextStage = b.splitStage === 1 ? 2 : 0;
+                        for (let k = 0; k < count; k++) {
+                            const sAng = (k / count) * Math.PI * 2;
+                            bullets.push({
+                                x: b.x,
+                                y: b.y,
+                                vx: Math.cos(sAng) * 11,
+                                vy: Math.sin(sAng) * 11,
+                                damage: b.damage * 0.45,
+                                radius: b.splitStage === 1 ? 5 : 3.2,
+                                color: '#fda4af',
+                                life: 24,
+                                isEnemy: b.isEnemy,
+                                splitStage: nextStage
+                            });
+                        }
+                    }
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                let hit = false;
+
+                // Asteroid collision
+                for (let j = asteroids.length - 1; j >= 0; j--) {
+                    const a = asteroids[j];
+                    if (Math.hypot(b.x - a.x, b.y - a.y) < b.radius + a.radius) {
+                        a.hp -= b.damage;
+                        spawnExplosion(b.x, b.y, b.color, 4);
+                        if (a.hp <= 0) {
+                            destroyAsteroid(j);
+                        }
+                        hit = true;
+                        break;
+                    }
+                }
+                if (hit) {
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                if (!b.isEnemy) {
+                    // Hit AI enemies
+                    for (let j = enemies.length - 1; j >= 0; j--) {
+                        const en = enemies[j];
+                        if (Math.hypot(b.x - en.x, b.y - en.y) < b.radius + en.radius) {
+                            en.shield -= b.damage;
+                            spawnExplosion(b.x, b.y, b.color, 5);
+                            if (en.shield <= 0) {
+                                score += 200;
+                                spawnGems(en.x, en.y, en.gems);
+                                spawnExplosion(en.x, en.y, '#38bdf8', 20);
+                                playSound('explosion');
+                                enemies.splice(j, 1);
+                                spawnEnemy();
+                            }
+                            hit = true;
+                            break;
+                        }
+                    }
+                    // Hit remote multiplayer ships visually
+                    if (!hit) {
+                        for (const peer of Object.values(remotePeers)) {
+                            if (Math.hypot(b.x - peer.x, b.y - peer.y) < b.radius + peer.radius) {
+                                spawnExplosion(b.x, b.y, b.color, 6);
+                                hit = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // Enemy / Remote bullet hitting local player
+                    if (Math.hypot(b.x - player.x, b.y - player.y) < b.radius + player.radius) {
+                        const incoming = b.damage * (spec.armorFactor || 1);
+                        damagePlayer(incoming, b.x, b.y);
+                        spawnExplosion(b.x, b.y, b.color, 6);
+                        hit = true;
+                    }
+                }
+
+                if (hit) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // Update Gems & Magnet Pickup
+            for (let i = gems.length - 1; i >= 0; i--) {
+                const g = gems[i];
+                g.vx *= 0.94;
+                g.vy *= 0.94;
+                g.x += g.vx;
+                g.y += g.vy;
+                g.life--;
+
+                if (g.life <= 0) {
+                    gems.splice(i, 1);
+                    continue;
+                }
+
+                const dist = Math.hypot(player.x - g.x, player.y - g.y);
+                if (dist < 140) {
+                    const ang = Math.atan2(player.y - g.y, player.x - g.x);
+                    g.x += Math.cos(ang) * 7.5;
+                    g.y += Math.sin(ang) * 7.5;
+                }
+
+                if (dist < player.radius + g.radius + 6) {
+                    player.gems = Math.min(spec.maxGems, player.gems + g.value);
+                    score += g.value * 5;
+                    playSound('gem');
+                    renderUpgradeButtons();
+                    gems.splice(i, 1);
+                }
+            }
+
+            // Update AI Enemies
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const en = enemies[i];
+                const distToPlayer = Math.hypot(player.x - en.x, player.y - en.y);
+
+                if (distToPlayer < 750 && player.invuln <= 0) {
+                    en.angle = Math.atan2(player.y - en.y, player.x - en.x);
+                    if (distToPlayer > 220) {
+                        en.vx += Math.cos(en.angle) * 0.25;
+                        en.vy += Math.sin(en.angle) * 0.25;
+                    }
+                    if (en.fireCooldown <= 0) {
+                        fireWeapon(en, true);
+                        en.fireCooldown = en.fireRate;
+                    }
+                } else {
+                    en.angle += (Math.random() - 0.5) * 0.08;
+                    en.vx += Math.cos(en.angle) * 0.14;
+                    en.vy += Math.sin(en.angle) * 0.14;
+                }
+
+                if (en.fireCooldown > 0) en.fireCooldown--;
+                en.vx *= 0.92;
+                en.vy *= 0.92;
+                en.x = Math.max(en.radius, Math.min(WORLD_SIZE - en.radius, en.x + en.vx));
+                en.y = Math.max(en.radius, Math.min(WORLD_SIZE - en.radius, en.y + en.vy));
+
+                // Hull collision between Player and AI Enemy
+                if (distToPlayer < player.radius + en.radius) {
+                    const ramDmg = spec.ramDamage || 12;
+                    en.shield -= ramDmg;
+                    damagePlayer(10 * (spec.armorFactor || 1), en.x, en.y);
+                    if (en.shield <= 0) {
+                        score += 200;
+                        spawnGems(en.x, en.y, en.gems);
+                        spawnExplosion(en.x, en.y, '#38bdf8', 20);
+                        playSound('explosion');
+                        enemies.splice(i, 1);
+                        spawnEnemy();
+                    }
+                }
+            }
+
+            // Remote Peer Hull Ramming
+            Object.values(remotePeers).forEach(peer => {
+                const dist = Math.hypot(player.x - peer.x, player.y - peer.y);
+                if (dist < player.radius + peer.radius) {
+                    const peerSpec = SHIPS[peer.type] || SHIPS.fly;
+                    const incomingRam = (peerSpec.ramDamage || 12) * (spec.armorFactor || 1);
+                    damagePlayer(incomingRam * 0.35, peer.x, peer.y);
+                }
+            });
+
+            // Update Beams & Particles
+            for (let i = beams.length - 1; i >= 0; i--) {
+                beams[i].life--;
+                if (beams[i].life <= 0) beams.splice(i, 1);
+            }
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            updateHUD();
+        }
+
+        // --- RENDERING ---
+        function drawShipHull(shipObj, isPlayer = false) {
+            const spec = SHIPS[shipObj.type] || SHIPS.fly;
+            const r = shipObj.radius;
+            const col = spec.color;
+
+            ctx.save();
+            ctx.translate(shipObj.x, shipObj.y);
+            ctx.rotate(shipObj.angle);
+
+            if (shipObj.invuln > 0 && Math.floor(shipObj.invuln / 4) % 2 === 0) {
+                ctx.globalAlpha = 0.45;
+            }
+
+            // Engine flame
+            const spd = Math.hypot(shipObj.vx || 0, shipObj.vy || 0);
+            if (spd > 0.6) {
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.moveTo(-r * 0.7, -r * 0.32);
+                ctx.lineTo(-r * (1.25 + Math.random() * 0.45), 0);
+                ctx.lineTo(-r * 0.7, r * 0.32);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            ctx.fillStyle = '#0f172a';
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = col;
+            ctx.shadowBlur = 10;
+
+            ctx.beginPath();
+            if (shipObj.type === 'destroyer') {
+                // TIE Interceptor twin-bent-wing silhouette
+                ctx.moveTo(r * 1.05, -r * 0.85);
+                ctx.lineTo(-r * 0.85, -r * 0.95);
+                ctx.lineTo(-r * 0.45, -r * 0.35);
+                ctx.lineTo(r * 0.55, 0);
+                ctx.lineTo(-r * 0.45, r * 0.35);
+                ctx.lineTo(-r * 0.85, r * 0.95);
+                ctx.lineTo(r * 1.05, r * 0.85);
+                ctx.lineTo(r * 0.35, r * 0.5);
+                ctx.lineTo(r * 0.35, -r * 0.5);
+            } else if (shipObj.type === 'odyssey' || shipObj.type === 'tanker' || shipObj.type === 'barracuda') {
+                // Heavy octagonal dreadnought hull
+                ctx.moveTo(r * 1.1, 0);
+                ctx.lineTo(r * 0.55, -r * 0.85);
+                ctx.lineTo(-r * 0.75, -r * 0.9);
+                ctx.lineTo(-r * 1.0, -r * 0.4);
+                ctx.lineTo(-r * 1.0, r * 0.4);
+                ctx.lineTo(-r * 0.75, r * 0.9);
+                ctx.lineTo(r * 0.55, r * 0.85);
+            } else if (shipObj.type === 'aries') {
+                // Armored battering-ram wedge
+                ctx.moveTo(r * 1.25, 0);
+                ctx.lineTo(r * 0.25, -r * 0.95);
+                ctx.lineTo(-r * 0.95, -r * 0.75);
+                ctx.lineTo(-r * 0.7, 0);
+                ctx.lineTo(-r * 0.95, r * 0.75);
+                ctx.lineTo(r * 0.25, r * 0.95);
+            } else {
+                // Sleek starfighter delta hull
+                ctx.moveTo(r * 1.2, 0);
+                ctx.lineTo(-r * 0.85, -r * 0.85);
+                ctx.lineTo(-r * 0.45, 0);
+                ctx.lineTo(-r * 0.85, r * 0.85);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Cockpit core
+            ctx.fillStyle = col;
+            ctx.beginPath();
+            ctx.arc(r * 0.12, 0, r * 0.24, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eviscerator nose charge orb
+            if (shipObj.charging) {
+                const prog = isPlayer ? Math.min(1, shipObj.chargeTimer / 48) : (shipObj.chargeProgress || 0.5);
+                ctx.fillStyle = '#e0f2fe';
+                ctx.shadowColor = '#38bdf8';
+                ctx.shadowBlur = 18;
+                ctx.beginPath();
+                ctx.arc(r * 1.25, 0, 4 + prog * 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.fillStyle = '#030712';
+            ctx.fillRect(0, 0, width, height);
+
+            const camX = player ? player.x - width / 2 : WORLD_SIZE / 2 - width / 2;
+            const camY = player ? player.y - height / 2 : WORLD_SIZE / 2 - height / 2;
+
+            // Starfield
+            stars.forEach(s => {
+                const sx = ((s.x - camX * s.parallax) % WORLD_SIZE + WORLD_SIZE) % WORLD_SIZE;
+                const sy = ((s.y - camY * s.parallax) % WORLD_SIZE + WORLD_SIZE) % WORLD_SIZE;
+                if (sx <= width && sy <= height) {
+                    ctx.fillStyle = `rgba(226, 232, 240, ${s.alpha})`;
+                    ctx.fillRect(sx, sy, s.size, s.size);
+                }
+            });
+
+            ctx.save();
+            ctx.translate(-camX, -camY);
+
+            // World Border
+            ctx.strokeStyle = 'rgba(244, 63, 94, 0.45)';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+
+            // Subtle Grid
+            ctx.strokeStyle = 'rgba(30, 41, 59, 0.35)';
+            ctx.lineWidth = 1;
+            const step = 200;
+            const startX = Math.floor(camX / step) * step;
+            const startY = Math.floor(camY / step) * step;
+            for (let x = startX; x < camX + width + step; x += step) {
+                if (x >= 0 && x <= WORLD_SIZE) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, WORLD_SIZE);
+                    ctx.stroke();
+                }
+            }
+            for (let y = startY; y < camY + height + step; y += step) {
+                if (y >= 0 && y <= WORLD_SIZE) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(WORLD_SIZE, y);
+                    ctx.stroke();
+                }
+            }
+
+            // Gems
+            gems.forEach(g => {
+                ctx.save();
+                ctx.translate(g.x, g.y);
+                ctx.fillStyle = g.value >= 5 ? '#f43f5e' : '#fb7185';
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.moveTo(0, -g.radius);
+                ctx.lineTo(g.radius * 0.85, 0);
+                ctx.lineTo(0, g.radius);
+                ctx.lineTo(-g.radius * 0.85, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // Asteroids
+            asteroids.forEach(a => {
+                ctx.save();
+                ctx.translate(a.x, a.y);
+                ctx.rotate(a.rot);
+                ctx.fillStyle = '#1e293b';
+                ctx.strokeStyle = '#64748b';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                a.vertices.forEach((v, idx) => {
+                    if (idx === 0) ctx.moveTo(v.x, v.y);
+                    else ctx.lineTo(v.x, v.y);
+                });
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Bullets
+            bullets.forEach(b => {
+                ctx.save();
+                ctx.fillStyle = b.color;
+                ctx.shadowColor = b.color;
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // Eviscerator Piercing Beams
+            beams.forEach(bm => {
+                const alpha = bm.life / bm.maxLife;
+                ctx.save();
+                ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.65})`;
+                ctx.lineWidth = 24 * alpha;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(bm.x1, bm.y1);
+                ctx.lineTo(bm.x2, bm.y2);
+                ctx.stroke();
+
+                ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.lineWidth = 9 * alpha;
+                ctx.beginPath();
+                ctx.moveTo(bm.x1, bm.y1);
+                ctx.lineTo(bm.x2, bm.y2);
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // AI Enemies
+            enemies.forEach(en => drawShipHull(en, false));
+
+            // Remote Multiplayer Pilots
+            Object.values(remotePeers).forEach(peer => {
+                drawShipHull(peer, false);
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = 'bold 10px Orbitron, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText((SHIPS[peer.type]?.name || 'PILOT'), peer.x, peer.y - peer.radius - 10);
+            });
+
+            // Local Player
+            if (player && gameActive) {
+                drawShipHull(player, true);
+            }
+
+            // Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+
+            ctx.restore();
+
+            // Minimap Radar
+            if (gameActive && player) {
+                const rSize = radarCanvas.width;
+                const rHalf = rSize / 2;
+                radarCtx.clearRect(0, 0, rSize, rSize);
+
+                const scale = rSize / WORLD_SIZE;
+                // Asteroids on radar
+                radarCtx.fillStyle = 'rgba(148, 163, 184, 0.45)';
+                asteroids.forEach(a => {
+                    radarCtx.fillRect(a.x * scale - 1, a.y * scale - 1, 2, 2);
+                });
+
+                // AI enemies on radar
+                radarCtx.fillStyle = '#fb7185';
+                enemies.forEach(en => {
+                    radarCtx.beginPath();
+                    radarCtx.arc(en.x * scale, en.y * scale, 2.5, 0, Math.PI * 2);
+                    radarCtx.fill();
+                });
+
+                // Remote peers on radar
+                radarCtx.fillStyle = '#a855f7';
+                Object.values(remotePeers).forEach(peer => {
+                    radarCtx.beginPath();
+                    radarCtx.arc(peer.x * scale, peer.y * scale, 3, 0, Math.PI * 2);
+                    radarCtx.fill();
+                });
+
+                // Player on radar
+                radarCtx.fillStyle = '#38bdf8';
+                radarCtx.beginPath();
+                radarCtx.arc(player.x * scale, player.y * scale, 3.5, 0, Math.PI * 2);
+                radarCtx.fill();
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- GAME FLOW & MENU CONTROLS ---
+        function startGameWithLobby(roomCode) {
+            initAudio();
+            score = 0;
+            player = createPlayer();
+            initWorld();
+            applyShipStats('fly', false);
+
+            document.getElementById('menu-modal').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('upgrades-panel').classList.remove('hidden');
+
+            if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                document.getElementById('touch-controls').classList.remove('hidden');
+            }
+
+            gameActive = true;
+            connectMultiplayerRoom(roomCode);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            playSound('explosion');
+            spawnExplosion(player.x, player.y, '#f43f5e', 40);
+
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('upgrades-panel').classList.add('hidden');
+            document.getElementById('evolution-panel').classList.add('hidden');
+            document.getElementById('touch-controls').classList.add('hidden');
+
+            document.getElementById('menu-title').textContent = 'SHIP DESTROYED';
+            document.getElementById('menu-subtitle').textContent = 'Your hull integrity failed. Re-enter a lobby to launch a new vessel.';
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('final-stats').classList.remove('hidden');
+
+            document.getElementById('landing-step').classList.add('hidden');
+            document.getElementById('lobby-step').classList.remove('hidden');
+            document.getElementById('menu-modal').classList.remove('hidden');
+        }
+
+        function generateLobbyCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) {
+                code += chars[Math.floor(Math.random() * chars.length)];
+            }
+            return code;
+        }
+
+        // --- EVENT LISTENERS ---
+        document.getElementById('play-menu-btn').addEventListener('click', () => {
+            initAudio();
+            document.getElementById('landing-step').classList.add('hidden');
+            document.getElementById('lobby-step').classList.remove('hidden');
+            document.getElementById('lobby-error').classList.add('hidden');
+        });
+
+        document.getElementById('back-to-landing-btn').addEventListener('click', () => {
+            document.getElementById('lobby-step').classList.add('hidden');
+            document.getElementById('landing-step').classList.remove('hidden');
+            document.getElementById('lobby-error').classList.add('hidden');
+        });
+
+        document.getElementById('random-lobby-btn').addEventListener('click', () => {
+            startGameWithLobby('PUBLIC-1');
+        });
+
+        document.getElementById('join-code-btn').addEventListener('click', () => {
+            const input = document.getElementById('lobby-code-input');
+            const err = document.getElementById('lobby-error');
+            const cleanCode = (input.value || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            if (!cleanCode) {
+                err.textContent = 'PLEASE ENTER A VALID LOBBY CODE';
+                err.classList.remove('hidden');
+                return;
+            }
+            err.classList.add('hidden');
+            startGameWithLobby(cleanCode);
+        });
+
+        document.getElementById('lobby-code-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('join-code-btn').click();
+            }
+        });
+
+        document.getElementById('create-lobby-btn').addEventListener('click', () => {
+            const newCode = generateLobbyCode();
+            startGameWithLobby(newCode);
+        });
+
+        // Info / Tech Tree Modal Controls
+        document.getElementById('info-btn').addEventListener('click', () => {
+            buildTechTreeUI();
+            document.getElementById('info-modal').classList.remove('hidden');
+        });
+        document.getElementById('close-info-btn').addEventListener('click', () => {
+            document.getElementById('info-modal').classList.add('hidden');
+        });
+
+        // Keyboard & Mouse Listeners
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (gameActive && e.key >= '1' && e.key <= '6') {
+                const cfg = UPGRADE_CONFIG[parseInt(e.key, 10) - 1];
+                if (cfg) purchaseUpgrade(cfg.id);
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                mouse.down = true;
+                mouse.active = true;
+            }
+        });
+        window.addEventListener('mouseup', () => {
+            mouse.down = false;
+        });
+
+        // Touch Joystick & Fire Listeners
+        const joyZone = document.getElementById('joystick-zone');
+        const joyKnob = document.getElementById('joystick-knob');
+        const touchFireBtn = document.getElementById('touch-fire');
+
+        joyZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touch.active = true;
+        }, { passive: false });
+
+        joyZone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!touch.active) return;
+            const rect = joyZone.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const t = e.touches[0];
+            const dx = t.clientX - cx;
+            const dy = t.clientY - cy;
+            const maxR = rect.width / 2;
+            const dist = Math.hypot(dx, dy);
+            const clamped = Math.min(dist, maxR);
+            const ang = Math.atan2(dy, dx);
+
+            joyKnob.style.transform = `translate(${Math.cos(ang) * clamped}px, ${Math.sin(ang) * clamped}px)`;
+            touch.dx = (Math.cos(ang) * clamped) / maxR;
+            touch.dy = (Math.sin(ang) * clamped) / maxR;
+            mouse.active = false;
+        }, { passive: false });
+
+        const endJoystick = () => {
+            touch.active = false;
+            touch.dx = 0;
+            touch.dy = 0;
+            joyKnob.style.transform = 'translate(0px, 0px)';
+        };
+        joyZone.addEventListener('touchend', endJoystick);
+        joyZone.addEventListener('touchcancel', endJoystick);
+
+        touchFireBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touch.firing = true;
+        }, { passive: false });
+        touchFireBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touch.firing = false;
+        }, { passive: false });
+
+        // Start background animation loop on load
+        initWorld();
+        gameLoop();
+    </script>
+</body>
+</html>
