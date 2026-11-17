@@ -864,10 +864,10 @@
                     if (!remotePeers[peerId]) {
                         remotePeers[peerId] = {
                             id: peerId,
-                            x: data.x,
-                            y: data.y,
-                            targetX: data.x,
-                            targetY: data.y,
+                            x: data.x ?? WORLD_SIZE / 2,
+                            y: data.y ?? WORLD_SIZE / 2,
+                            targetX: data.x ?? WORLD_SIZE / 2,
+                            targetY: data.y ?? WORLD_SIZE / 2,
                             vx: data.vx || 0,
                             vy: data.vy || 0,
                             angle: data.angle || 0,
@@ -884,8 +884,12 @@
                     }
 
                     const peer = remotePeers[peerId];
-                    peer.targetX = data.x;
-                    peer.targetY = data.y;
+                    if (typeof data.x === 'number') peer.targetX = data.x;
+                    if (typeof data.y === 'number') peer.targetY = data.y;
+                    if (Math.hypot(peer.targetX - peer.x, peer.targetY - peer.y) > 400) {
+                        peer.x = peer.targetX;
+                        peer.y = peer.targetY;
+                    }
                     peer.vx = data.vx || 0;
                     peer.vy = data.vy || 0;
                     peer.angle = data.angle;
@@ -910,10 +914,10 @@
                     if (!remotePeers[peerId]) {
                         remotePeers[peerId] = {
                             id: peerId,
-                            x: WORLD_SIZE / 2,
-                            y: WORLD_SIZE / 2,
-                            targetX: WORLD_SIZE / 2,
-                            targetY: WORLD_SIZE / 2,
+                            x: player ? player.x : WORLD_SIZE / 2,
+                            y: player ? player.y : WORLD_SIZE / 2,
+                            targetX: player ? player.x : WORLD_SIZE / 2,
+                            targetY: player ? player.y : WORLD_SIZE / 2,
                             vx: 0,
                             vy: 0,
                             angle: 0,
@@ -940,6 +944,8 @@
 
                 room.onPeerJoin((peerId) => {
                     broadcastBuildPacket(peerId);
+                    lastStateSyncTime = 0;
+                    broadcastStatePacket(performance.now());
                     updateLobbyHud();
                 });
 
@@ -948,8 +954,10 @@
                     updateLobbyHud();
                 });
 
-                // Broadcast initial build immediately
+                // Broadcast initial build and position immediately
                 broadcastBuildPacket();
+                lastStateSyncTime = 0;
+                broadcastStatePacket(performance.now());
             } catch (err) {
                 console.warn('P2P connection running in local mode:', err);
             }
@@ -2240,6 +2248,30 @@
                 document.getElementById('create-lobby-btn').click();
             }
         });
+
+        document.getElementById('info-btn').addEventListener('click', () => {
+            buildTechTreeUI();
+            document.getElementById('info-modal').classList.remove('hidden');
+            requestAnimationFrame(drawTechTreeLines);
+        });
+
+        document.getElementById('close-info-btn').addEventListener('click', () => {
+            document.getElementById('info-modal').classList.add('hidden');
+        });
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].includes(e.code)) {
+                const idx = parseInt(e.code.replace('Digit', ''), 10) - 1;
+                if (UPGRADE_CONFIG[idx]) {
+                    purchaseUpgrade(UPGRADE_CONFIG[idx].id);
+                }
+            }
+            if (e.code === 'Escape') {
+                document.getElementById('info-modal').classList.add('hidden');
+            }
+        });
+
         window.addEventListener('keyup', (e) => {
             keys[e.code] = false;
         });
